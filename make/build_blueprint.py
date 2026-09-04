@@ -157,7 +157,11 @@ END_H_LAST = f'if({MULTI_DAY} = "yes"; {END_CEIL}; 0)'
 # Routes API answers with a JSON array of elements; duration is "160s". Missing duration -> -1.
 DRIVE_SECS = 'parseNumber(replace(ifempty(12.data[1].duration; "-1s"); "s"; ""))'
 DRIVE = f'if(11.has_location = "yes"; {DRIVE_SECS}; 0)'
-FAR = f'if(11.has_location = "no"; "no"; if(12.data[1].condition = "ROUTE_EXISTS" and {DRIVE_SECS} <= 900; "no"; "yes"))'
+# Never combine two comparisons with `and` inside if(): Make does not evaluate that the way
+# the operator precedence suggests, and a live run showed every such condition coming out true.
+# Nested if() calls are unambiguous. tests/test_artifacts.py fails the build if `and` returns.
+FAR = (f'if(11.has_location = "no"; "no"; '
+       f'if(12.data[1].condition = "ROUTE_EXISTS"; if({DRIVE_SECS} <= 900; "no"; "yes"); "yes"))')
 # job location as a JSON-safe string: drop double quotes (\x22) and line breaks
 SAFE_LOCATION = 'replace(ifempty(11.location; 2.company); "/[\\x22\\n\\r\\t]+/g"; " ")'
 ROUTE_BODY = (
@@ -178,10 +182,9 @@ def ts(hour: int) -> str:
 
 def slot_flag(h: int) -> str:
     """Open unless both hours are busy; today also needs start >= now + 2h."""
-    return iml(
-        f'if(contains(15.busy; 17.k{h:02d}) and contains(15.busy; 17.k{h + 1:02d}); "no"; '
-        f'if(17.date = 2.today and 17.ts{h:02d} < 8.earliest_ts; "no"; "yes"))'
-    )
+    lead = f'if(17.date = 2.today; if(17.ts{h:02d} < 8.earliest_ts; "no"; "yes"); "yes")'
+    return iml(f'if(contains(15.busy; 17.k{h:02d}); '
+               f'if(contains(15.busy; 17.k{h + 1:02d}); "no"; {lead}); {lead})')
 
 
 SPOKEN = {8: "8 AM to 10 AM", 10: "10 AM to 12 PM", 12: "12 PM to 2 PM", 14: "2 PM to 4 PM"}
@@ -250,8 +253,9 @@ def build() -> dict:
         ("resolved_address", "{{3.data.results[1].formatted_address}}"),
         ("lat", "{{3.data.results[1].geometry.location.lat}}"),
         ("lng", "{{3.data.results[1].geometry.location.lng}}"),
-        ("fail_status", iml('if(3.data.status = "OK" or 3.data.status = "ZERO_RESULTS" or 3.data.status = "INVALID_REQUEST"; '
-                            '"address_not_found"; "error")')),
+        ("fail_status", iml('if(3.data.status = "OK"; "address_not_found"; '
+                            'if(3.data.status = "ZERO_RESULTS"; "address_not_found"; '
+                            'if(3.data.status = "INVALID_REQUEST"; "address_not_found"; "error")))')),
     ], 900, 0)
 
     unknown = respond(6, "Respond: unknown_trade", (
@@ -342,13 +346,13 @@ def build() -> dict:
         ("date", "{{11.date}}"),
         ("end_date", "{{11.end_date}}"),
         ("hour_keys",
-         "".join(iml(f'if(11.start_h <= {h} and 11.end_h_first > {h}; 11.k{h:02d}; "")') for h in range(8, 16))
+         "".join(iml(f'if(11.start_h <= {h}; if(11.end_h_first > {h}; 11.k{h:02d}; ""); "")') for h in range(8, 16))
          + "".join(iml(f'if(11.end_h_last > {h}; 11.j{h:02d}; "")') for h in range(8, 16))),
         ("drive_seconds", iml(DRIVE)),
         ("far", iml(FAR)),
         # A job ending at exactly midnight occupies no hour of its end date, so that date is
         # not ruled out by the 15-minute rule. All-day jobs arrive in exactly that shape.
-        ("far_end_date", iml(f'if({FAR} = "yes" and 11.end_h_last > 0; 11.end_date; "")')),
+        ("far_end_date", iml(f'if({FAR} = "yes"; if(11.end_h_last > 0; 11.end_date; ""); "")')),
         ("debug_json", '{"date":"{{11.date}}","end_date":"{{11.end_date}}","start_h":{{11.start_h}},'
                        '"end_h":{{11.end_h_first}},"end_h_last":{{11.end_h_last}},'
                        '"has_location":"{{11.has_location}}","drive_seconds":' + iml(DRIVE) + ',"far":"' + iml(FAR) + '"}'),

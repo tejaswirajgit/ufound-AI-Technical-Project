@@ -144,6 +144,24 @@ def test_rules_are_encoded(bp, mods):
     assert text.count('"America/New_York"') + text.count('"UTC"') >= text.count("formatDate(") + text.count("setHour(")
 
 
+def test_no_compound_conditions_in_iml(bp):
+    """Make does not evaluate `a = b and c = d` inside if() the way precedence suggests.
+
+    A live run on 2026-09-04 showed every such condition coming out true: a job from 14:00 to
+    16:00 marked all eight working hours busy, and a job 1526 seconds away came back as not
+    far. Nested if() calls are unambiguous, so no bare `and`/`or` may appear in an expression.
+    Quoted string literals are stripped first, since the spoken messages contain the words.
+    """
+    literal = re.compile('"[^"]*"')
+    word = re.compile(chr(92) + 'b(and|or)' + chr(92) + 'b')
+    offenders = []
+    for text in strings(bp):
+        for expr in IML_BLOCK.findall(text):
+            if word.search(literal.sub('', expr)):
+                offenders.append(expr[:120])
+    assert not offenders, "use nested if() instead of and/or: " + "; ".join(offenders)
+
+
 def test_slot_fragments_match_reference_shape(mods):
     day_slots = next(m for m in mods if m["id"] == 18)
     frags = {v["name"]: v["value"] for v in day_slots["mapper"]["variables"] if v["name"].startswith("frag")}
