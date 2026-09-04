@@ -21,6 +21,7 @@ team member will confirm shortly. Booking, confirmation and everything after are
 | `reference/availability.py` | Python reference of the slot rules. The scenario is checked against it, not eyeballed |
 | `reference/check_webhook.py` | Live checker: posts Retell-shaped requests, validates every slot, recomputes the slots from the scenario's debug payload and diffs |
 | `reference/check_maps_key.py` | Proves a Google Maps key works on both APIs before it goes anywhere near Make |
+| `reference/localenv.py` | Reads `.env` so the scripts work the same in PowerShell, cmd and bash |
 | `reference/strip_secrets.py` | Blanks the Maps key and webhook URL in raw exports before commit |
 | `tests/` | 951 pytest cases: rules, randomized oracle stress test, blueprint simulation, artifact checks |
 | Video walkthrough | Sent with the submission email |
@@ -138,13 +139,14 @@ Google Cloud: a project with billing enabled, the Geocoding API and the Routes A
 an API key restricted to those two. Verify it before wiring anything up:
 
 ```
-export GOOGLE_MAPS_API_KEY=...        # PowerShell: $env:GOOGLE_MAPS_API_KEY="..."
+cp env.example .env       # then put the real key in .env
 python reference/check_maps_key.py
 ```
 
 It geocodes a caller address, measures the drive to the company, and names the exact console
-setting to change when either call is rejected. The key is read from the environment and never
-printed. The legacy Distance Matrix API cannot be enabled on projects
+setting to change when either call is rejected. Secrets live in `.env`, which is gitignored;
+`env.example` is the committed template. A real environment variable overrides the file. The
+key is never taken as an argument and never printed. The legacy Distance Matrix API cannot be enabled on projects
 created after March 2025, which is why the scenario uses `computeRouteMatrix`; both APIs have a
 free monthly tier that covers this project many times over.
 

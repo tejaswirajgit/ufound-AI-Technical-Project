@@ -4,7 +4,7 @@ Posts Retell-shaped requests, validates every slot against the rules, and (with 
 scenario's debug payload) recomputes the slots with reference/availability.py so the
 Make output is verified, not eyeballed. Exit code 1 if anything is off.
 
-    set MAKE_WEBHOOK_URL=https://hook.eu1.make.com/xxxx      (or pass --url)
+    Put MAKE_WEBHOOK_URL in .env (see env.example), or pass --url.
     python reference/check_webhook.py --trade Plumbing --address "1600 Barton Springs Rd, Austin, TX 78704"
     python reference/check_webhook.py --matrix                 # 3 trades x near/mid/far/bad addresses
     python reference/check_webhook.py --stress 20 --concurrency 5   # load test, costs Make operations
@@ -27,7 +27,10 @@ import urllib.request
 from datetime import date, datetime, time as dtime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from reference import localenv  # noqa: E402
 from reference.availability import SLOTS, TZ, Event, available_slots, technician_for  # noqa: E402
+
+localenv.load()
 
 STATUSES = {"ok", "no_availability", "address_not_found", "unknown_trade", "error"}
 ADDRESSES = {
