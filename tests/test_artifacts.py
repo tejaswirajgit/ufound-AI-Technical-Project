@@ -13,6 +13,7 @@ BLUEPRINT = ROOT / "make" / "check_availability.blueprint.json"
 BUILDER = ROOT / "make" / "build_blueprint.py"
 TOOL = ROOT / "retell" / "tool_check_availability.json"
 PROMPT = ROOT / "retell" / "prompt.md"
+AGENT = ROOT / "retell" / "agent-export.json"
 SECRET_PATTERNS = [re.compile(r"AIza[0-9A-Za-z_\-]{35,}"), re.compile(r"hook\.[a-z0-9.\-]+\.make\.com/")]
 IML_REF = re.compile(r"\{\{(\d+)\.")
 IML_BLOCK = re.compile(r"\{\{.*?\}\}")
@@ -91,6 +92,30 @@ def test_prompt_covers_the_scored_rules():
                    "do not guess", "never say those three names", "no_availability", "address_not_found",
                    "never call check_availability in the same turn", "anything other than a clear yes"]:
         assert phrase in text, phrase
+
+
+def test_agent_export_matches_the_committed_prompt_and_tool():
+    """The dashboard is the live system; this file is only evidence of it.
+
+    Retell holds the real prompt, so the export can drift from the repo the moment someone
+    edits one and not the other. Comparing them makes a stale export a failing test rather
+    than a reviewer noticing the submitted JSON disagrees with the submitted prompt.
+    """
+    md = PROMPT.read_text(encoding="utf-8")
+    system_prompt = md.split("## System prompt", 1)[1].strip()
+    begin_message = md.split("## Begin message", 1)[1].split("##", 1)[0].strip()
+    llm = json.loads(AGENT.read_text(encoding="utf-8"))["retellLlmData"]
+    assert llm["general_prompt"].strip() == system_prompt
+    assert llm["begin_message"].strip() == begin_message
+    assert llm["is_published"] is True, "export a published version, not the working draft"
+
+    tools = {t.get("name") or t["type"]: t for t in llm["general_tools"]}
+    assert "end_call" in tools, "without it the agent cannot hang up when the prompt says to"
+    tool = json.loads(TOOL.read_text(encoding="utf-8"))
+    live = tools["check_availability"]
+    assert live["parameters"] == tool["parameters"]
+    assert live["timeout_ms"] == tool["timeout_ms"]
+    assert live["url"] == "MAKE_WEBHOOK_URL", "run reference/strip_secrets.py before committing"
 
 
 def test_blueprint_regenerates_identically(bp):
