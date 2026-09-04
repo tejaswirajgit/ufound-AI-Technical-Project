@@ -143,12 +143,20 @@ def http(id_: int, name: str, x: int, y: int, url: str, method: str = "get",
 
 
 # ---- per-event expressions (module 10 = iterator bundle = one Google Calendar event) ----
+# Variables inside one Set variables module cannot reference each other, so these nest instead.
 P = 'parseDate(10.start.dateTime; "YYYY-MM-DDTHH:mm:ssZ")'
 PE = 'parseDate(10.end.dateTime; "YYYY-MM-DDTHH:mm:ssZ")'
 NO_DT = 'ifempty(10.start.dateTime; "") = ""'  # true for all-day events (start.date instead of start.dateTime)
 EVENT_DATE = f'if({NO_DT}; 10.start.date; {fmt(P, "YYYY-MM-DD")})'
-END_H = f'parseNumber({fmt(PE, "H")}) + if(parseNumber({fmt(PE, "m")}) > 0; 1; 0)'  # exclusive end hour, ceiling
-END_H_EFF = f'if({NO_DT}; 24; if({fmt(PE, "YYYY-MM-DD")} = {fmt(P, "YYYY-MM-DD")}; {END_H}; 24))'  # ends another day -> rest of day busy
+# An all-day event is treated as its first day only (a multi-day block is a documented blind spot),
+# so its end date is forced to the start date.
+END_DATE = f'if({NO_DT}; 10.start.date; {fmt(PE, "YYYY-MM-DD")})'
+MULTI_DAY = f'if({END_DATE} = {EVENT_DATE}; "no"; "yes")'
+END_CEIL = f'if({NO_DT}; 24; parseNumber({fmt(PE, "H")}) + if(parseNumber({fmt(PE, "m")}) > 0; 1; 0))'
+START_H = f'if({NO_DT}; 0; parseNumber({fmt(P, "H")}))'
+# A job that runs past midnight is busy to the end of its first day and from hour 0 of its last.
+END_H_FIRST = f'if({MULTI_DAY} = "yes"; 24; {END_CEIL})'
+END_H_LAST = f'if({MULTI_DAY} = "yes"; {END_CEIL}; 0)'
 
 # Routes API answers with a JSON array of elements; duration is "160s". Missing duration -> -1.
 DRIVE_SECS = 'parseNumber(replace(ifempty(12.data[1].duration; "-1s"); "s"; ""))'
@@ -163,7 +171,9 @@ ROUTE_BODY = (
 
 # ---- per-day expressions (module 16 = repeater, i = 0..13) ----
 DAY = "addDays(2.window_noon; 16.i)"  # noon anchor: +-1h DST drift never changes the calendar date
-MIDNIGHT = f"setHour(setMinute(setSecond(now; 0); 0); 0; {TZ})"
+# Every part carries the timezone: without it Make would zero the minutes in the organisation's
+# timezone, which is half an hour off Eastern for an India-based account.
+MIDNIGHT = f"setHour(setMinute(setSecond(now; 0; {TZ}); 0; {TZ}); 0; {TZ})"
 
 
 def ts(hour: int) -> str:
@@ -228,7 +238,7 @@ def build() -> dict:
         ("today", iml(fmt("now", "YYYY-MM-DD"))),
         ("today_spoken", iml(fmt("now", "dddd, MMMM D"))),
         ("now_ts", iml('parseNumber(formatDate(now; "X"))')),
-        ("window_noon", iml(f"setHour(setMinute(setSecond(now; 0); 0); 12; {TZ})")),
+        ("window_noon", iml(f"setHour(setMinute(setSecond(now; 0; {TZ}); 0; {TZ}); 12; {TZ})")),
         ("debug", iml('if(1.debug = "yes"; "yes"; "no")')),
     ], 300, 0)
 
@@ -307,11 +317,14 @@ def build() -> dict:
     event_times = setvars(11, "Event times (Eastern)", [
         ("all_day", iml(f'if({NO_DT}; "yes"; "no")')),
         ("date", iml(EVENT_DATE)),
-        ("start_h", iml(f'if({NO_DT}; 0; parseNumber({fmt(P, "H")}))')),
-        ("end_h_eff", iml(END_H_EFF)),
+        ("end_date", iml(END_DATE)),
+        ("start_h", iml(START_H)),
+        ("end_h_first", iml(END_H_FIRST)),
+        ("end_h_last", iml(END_H_LAST)),
         ("location", iml('ifempty(10.location; "")')),
         ("has_location", iml('if(ifempty(10.location; "") = ""; "no"; "yes")')),
         *[(f"k{h:02d}", iml(EVENT_DATE) + f" {h:02d}|") for h in range(8, 16)],
+        *[(f"j{h:02d}", iml(END_DATE) + f" {h:02d}|") for h in range(8, 16)],
     ], 2400, 0, filt("This technician's events, not cancelled",
                      cond('{{lower(join(map(10.attendees; "email"); ","))}}', "text:contain", "{{2.tech}}"),
                      cond("{{10.status}}", "text:notequal", "cancelled")))
@@ -323,14 +336,18 @@ def build() -> dict:
 
     event_row = setvars(13, "Event row", [
         ("date", "{{11.date}}"),
-        ("hour_keys", "".join(iml(f'if(11.start_h <= {h} and 11.end_h_eff > {h}; 11.k{h:02d}; "")') for h in range(8, 16))),
+        ("end_date", "{{11.end_date}}"),
+        ("hour_keys",
+         "".join(iml(f'if(11.start_h <= {h} and 11.end_h_first > {h}; 11.k{h:02d}; "")') for h in range(8, 16))
+         + "".join(iml(f'if(11.end_h_last > {h}; 11.j{h:02d}; "")') for h in range(8, 16))),
         ("drive_seconds", iml(DRIVE)),
         ("far", iml(FAR)),
-        ("debug_json", '{"date":"{{11.date}}","start_h":{{11.start_h}},"end_h":{{11.end_h_eff}},"all_day":"{{11.all_day}}",'
+        ("debug_json", '{"date":"{{11.date}}","end_date":"{{11.end_date}}","start_h":{{11.start_h}},'
+                       '"end_h":{{11.end_h_first}},"end_h_last":{{11.end_h_last}},"all_day":"{{11.all_day}}",'
                        '"has_location":"{{11.has_location}}","drive_seconds":' + iml(DRIVE) + ',"far":"' + iml(FAR) + '"}'),
     ], 3000, 0)
 
-    row_fields = ["date", "hour_keys", "far", "drive_seconds", "debug_json"]
+    row_fields = ["date", "end_date", "hour_keys", "far", "drive_seconds", "debug_json"]
     aggregator = {
         "id": 14,
         "module": "builtin:BasicAggregator",
@@ -346,7 +363,9 @@ def build() -> dict:
 
     busy_map = setvars(15, "Busy map", [
         ("busy", iml('join(map(14.array; "hour_keys"); "")')),
-        ("far_dates", iml('join(map(14.array; "date"; "far"; "yes"); "|")')),
+        # Both ends of a far job: a job running past midnight rules out both days.
+        ("far_dates", iml('join(map(14.array; "date"; "far"; "yes"); "|")') + "|"
+                      + iml('join(map(14.array; "end_date"; "far"; "yes"); "|")')),
         ("event_count", iml("length(14.array)")),
         ("debug_events", iml('if(2.debug = "yes"; join(map(14.array; "debug_json"); ","); "")')),
     ], 3600, 0)
