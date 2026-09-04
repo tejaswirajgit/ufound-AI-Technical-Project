@@ -14,7 +14,8 @@ __pycache__/
 .venv/
 venv/
 
-# Secrets and local environment
+# Secrets and local environment.
+# env.example holds placeholders only and is committed; the real .env never is.
 .env
 .env.*
 *.local.json
