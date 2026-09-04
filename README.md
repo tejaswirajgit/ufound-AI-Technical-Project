@@ -170,6 +170,10 @@ python reference/check_webhook.py --matrix            # live: 3 trades x near/mi
 python reference/check_webhook.py --stress 20 --concurrency 5
 ```
 
+Only the first is free. Each live request costs about 58 Make operations, so `--matrix` is
+roughly 700 and `--stress 20` roughly 1160, against a free plan of 1000 a month. Run them on a
+paid plan or a fresh account; everything below runs offline.
+
 The scenario's logic is verified before it ever reaches Make. `make/simulate.py` is a small
 interpreter for the expressions and module types this blueprint uses. It executes the real
 exported file against mocked Google responses, so a typo in an expression fails the build
@@ -245,8 +249,13 @@ and a request for a date the rules exclude, which the agent refused rather than 
 - Retell retries a failed tool call; the scenario is read-only, so retries are harmless but cost operations.
 - Make answers the webhook with "Accepted" if the scenario runs longer than about 40 seconds.
   The prompt treats any response without a status as an error and promises a callback.
-- Free-plan operation budgets limit live testing to roughly ten calls a month; the Python
-  reference and the stress test carry the logic verification instead.
+- One request costs about 58 Make operations, so a 1000-a-month free plan is roughly 17 live
+  calls; the Python reference and the simulator carry the logic verification instead. Most of
+  that cost is one Routes API call per calendar event. `computeRouteMatrix` takes a list of
+  destinations, so those calls belong in a single request with one origin and every job as a
+  destination, which would cut the per-run cost by roughly an order of magnitude. It is written
+  one-per-event here because that shape was easier to verify against the reference, and by the
+  time the saving was obvious there was no operation budget left to re-test the change.
 - No service-area check: a caller far outside Austin gets every job-day excluded rather than a
   polite refusal.
 
