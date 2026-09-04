@@ -17,10 +17,11 @@ team member will confirm shortly. Booking, confirmation and everything after are
 | `retell/tool_check_availability.json` | The single custom tool |
 | `make/check_availability.blueprint.json` | Make.com scenario export (Maps key stripped) |
 | `make/build_blueprint.py` | Generates the blueprint; every IML expression is readable here |
+| `make/simulate.py` | Runs the blueprint locally against mocked Google responses, so its logic is tested before it reaches Make |
 | `reference/availability.py` | Python reference of the slot rules. The scenario is checked against it, not eyeballed |
 | `reference/check_webhook.py` | Live checker: posts Retell-shaped requests, validates every slot, recomputes the slots from the scenario's debug payload and diffs |
 | `reference/strip_secrets.py` | Blanks the Maps key and webhook URL in raw exports before commit |
-| `tests/` | 627 pytest cases: rules, randomized oracle stress test, artifact checks |
+| `tests/` | 951 pytest cases: rules, randomized oracle stress test, blueprint simulation, artifact checks |
 | Video walkthrough | Sent with the submission email |
 
 ## Rules implemented
@@ -150,10 +151,15 @@ keep "speak during execution" on.
 ## Testing
 
 ```
-python -m pytest -q                                   # 627 passed
+python -m pytest -q                                   # 951 passed
 python reference/check_webhook.py --matrix            # live: 3 trades x near/mid/far/bad address
 python reference/check_webhook.py --stress 20 --concurrency 5
 ```
+
+The scenario's logic is verified before it ever reaches Make. `make/simulate.py` is a small
+interpreter for the expressions and module types this blueprint uses. It executes the real
+exported file against mocked Google responses, so a typo in an expression fails the build
+instead of surfacing on a live call.
 
 - `tests/test_availability.py` (18): one case per rule, including the exact 15-minute edge, the
   2-hour lead-time boundary to the minute, partial overlaps, all-day events, UTC input, other
@@ -162,6 +168,13 @@ python reference/check_webhook.py --stress 20 --concurrency 5
   with different primitives, 300 invariant checks (no weekend, only the four fixed windows,
   inside the window, lead time respected, sorted, unique, spoken text well-formed), including
   both daylight-saving switch days, plus a 5,000-event timing check.
+- `tests/test_blueprint_simulation.py` (324): the blueprint itself, executed. 300 random
+  calendars produce exactly the reference's slots, the answer is independent of the Make
+  organisation's timezone, and each rule and error path is pinned: one free hour keeps a slot,
+  both hours busy closes it, a far or unmeasurable job clears the day, other technicians and
+  cancelled events are ignored, an overnight job blocks the right hours on both days, a fully
+  booked technician returns `no_availability`, and a failure of any of the three API modules
+  returns `error` rather than breaking the call.
 - `tests/test_artifacts.py`: the blueprint regenerates identically, module ids are unique, every
   IML reference resolves, every response body is valid JSON with `status` and `slots`, the
   routing, 7200-second and 900-second rules are present, every date function carries a
@@ -177,6 +190,10 @@ python reference/check_webhook.py --stress 20 --concurrency 5
   and without traffic (Routes API `TRAFFIC_UNAWARE`). A job at 8 AM and the caller at 4 PM are treated the same.
 - A multi-day all-day event (a week of vacation) blocks only its first day, because
   `singleEvents` does not split it. A production build would expand `start.date` to `end.date`.
+  A timed job that runs past midnight is handled correctly on both of its days.
+- `make/simulate.py` models Make's semantics from its documentation, not from Make itself. It
+  catches logic and expression errors; it cannot catch a module id or connection that Make
+  rejects at import. That is what the live webhook run is for.
 - More than 250 events in the 14-day window would need pagination.
 - The calendar is not re-checked between this call and the human confirmation; booking is out of scope.
 - Retell retries a failed tool call; the scenario is read-only, so retries are harmless but cost operations.
@@ -191,6 +208,7 @@ python reference/check_webhook.py --stress 20 --concurrency 5
 
 ```
 make/build_blueprint.py                     blueprint generator
+make/simulate.py                            local blueprint interpreter (tests)
 make/check_availability.blueprint.json      Make scenario (import this)
 retell/prompt.md                            agent prompt and begin message
 retell/tool_check_availability.json         custom tool definition
