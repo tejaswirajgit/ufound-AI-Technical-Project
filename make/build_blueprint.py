@@ -9,7 +9,7 @@ Then import the JSON in Make (Scenarios > Create > ... > Import Blueprint), pick
 and Google connection, paste the calendar id and Maps key into module 2.
 
 Flow (module ids are stable and referenced in README and the video):
-  1 webhook -> 2 config/routing -> 3 Maps: validate caller address -> 4 address check -> 5 router
+  1 webhook -> 2 config/routing -> 3 Maps: geocode caller address -> 4 address check -> 5 router
     route 1:  6 respond unknown_trade
     route 2:  7 respond address_not_found / error
     route 3:  8 time window -> 9 Calendar events -> 10 iterator
@@ -18,6 +18,14 @@ Flow (module ids are stable and referenced in README and the video):
               -> 16 repeater (14 days) -> 17 day -> 18 day slots (filter: weekday, not far)
               -> 19 text aggregator -> 20 respond ok / no_availability
   Error handlers on 3, 9, 12 respond {"status":"error"} and ignore.
+
+Google Maps: the Distance Matrix API is legacy and cannot be enabled on new projects, so
+address validation uses the Geocoding API and drive times use Routes API computeRouteMatrix.
+
+Unverified from public sources: the Google Calendar "Make an API call" module id (Make's own
+templates use google-calendar:createAnEvent v5, so makeAnAPICall v5 follows the pattern). If the
+import rejects module 9, add Google Calendar > Make an API call in the UI with the same URL and
+query string, then re-export.
 """
 from __future__ import annotations
 
@@ -26,7 +34,8 @@ import pathlib
 
 TZ = '"America/New_York"'
 COMPANY = "4820 Burnet Road, Austin, TX 78756, USA"
-MAPS = "https://maps.googleapis.com/maps/api/distancematrix/json"
+GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+ROUTES_URL = "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix"
 JSON_HEADER = [{"key": "Content-Type", "value": "application/json"}]
 OUT = pathlib.Path(__file__).with_name("check_availability.blueprint.json")
 
@@ -97,23 +106,21 @@ def on_error(id_: int, x: int, y: int) -> list[dict]:
     ]
 
 
-def maps_get(id_: int, name: str, destination: str, x: int, y: int) -> dict:
+def http(id_: int, name: str, x: int, y: int, url: str, method: str = "get",
+         qs: list[tuple[str, str]] | None = None, headers: list[tuple[str, str]] | None = None, body: str = "") -> dict:
     return {
         "id": id_,
         "module": "http:ActionSendData",
         "version": 3,
-        "parameters": {"handleErrors": False, "useNewZLibDeCompress": True},
+        # handleErrors = "evaluate all states as errors (except 2xx/3xx)": a 4xx from Google (bad key,
+        # quota) goes to the error handler instead of silently producing an empty result.
+        "parameters": {"handleErrors": True, "useNewZLibDeCompress": True},
         "mapper": {
-            "url": MAPS,
+            "url": url,
             "serializeUrl": False,
-            "method": "get",
-            "headers": [],
-            "qs": [
-                {"name": "origins", "value": "{{2.address}}"},
-                {"name": "destinations", "value": destination},
-                {"name": "mode", "value": "driving"},
-                {"name": "key", "value": "{{2.maps_key}}"},
-            ],
+            "method": method,
+            "headers": [{"name": k, "value": v} for k, v in (headers or [])],
+            "qs": [{"name": k, "value": v} for k, v in (qs or [])],
             "bodyType": "raw",
             "parseResponse": True,
             "authUser": "",
@@ -127,7 +134,7 @@ def maps_get(id_: int, name: str, destination: str, x: int, y: int) -> dict:
             "gzip": True,
             "useMtls": False,
             "contentType": "application/json",
-            "data": "",
+            "data": body,
             "followAllRedirects": False,
         },
         "metadata": designer(x, y, name),
@@ -143,10 +150,15 @@ EVENT_DATE = f'if({NO_DT}; 10.start.date; {fmt(P, "YYYY-MM-DD")})'
 END_H = f'parseNumber({fmt(PE, "H")}) + if(parseNumber({fmt(PE, "m")}) > 0; 1; 0)'  # exclusive end hour, ceiling
 END_H_EFF = f'if({NO_DT}; 24; if({fmt(PE, "YYYY-MM-DD")} = {fmt(P, "YYYY-MM-DD")}; {END_H}; 24))'  # ends another day -> rest of day busy
 
-DRIVE = 'if(11.has_location = "yes"; ifempty(12.data.rows[1].elements[1].duration.value; -1); 0)'
-FAR = (
-    'if(11.has_location = "no"; "no"; if(12.data.status = "OK" and 12.data.rows[1].elements[1].status = "OK" '
-    'and 12.data.rows[1].elements[1].duration.value <= 900; "no"; "yes"))'
+# Routes API answers with a JSON array of elements; duration is "160s". Missing duration -> -1.
+DRIVE_SECS = 'parseNumber(replace(ifempty(12.data[1].duration; "-1s"); "s"; ""))'
+DRIVE = f'if(11.has_location = "yes"; {DRIVE_SECS}; 0)'
+FAR = f'if(11.has_location = "no"; "no"; if(12.data[1].condition = "ROUTE_EXISTS" and {DRIVE_SECS} <= 900; "no"; "yes"))'
+# job location as a JSON-safe string: drop double quotes (\x22) and line breaks
+SAFE_LOCATION = 'replace(ifempty(11.location; 2.company); "/[\\x22\\n\\r\\t]+/g"; " ")'
+ROUTE_BODY = (
+    '{"origins":[{"waypoint":{"location":{"latLng":{"latitude":{{4.lat}},"longitude":{{4.lng}}}}}}],'
+    '"destinations":[{"waypoint":{"address":"' + iml(SAFE_LOCATION) + '"}}],"travelMode":"DRIVE"}'
 )
 
 # ---- per-day expressions (module 16 = repeater, i = 0..13) ----
@@ -190,6 +202,11 @@ def build() -> dict:
         "mapper": {},
         "metadata": {
             **designer(0, 0, "Retell: check_availability"),
+            "restore": {"parameters": {"hook": {"data": {"editable": "true"}, "label": "check_availability"}}},
+            "parameters": [
+                {"name": "hook", "type": "hook:gateway-webhook", "label": "Webhook", "required": True},
+                {"name": "maxResults", "type": "number", "label": "Maximum number of results"},
+            ],
             "interface": [
                 {"name": "name", "type": "text"},
                 {"name": "args", "type": "collection", "spec": [{"name": "trade", "type": "text"}, {"name": "address", "type": "text"}]},
@@ -215,14 +232,19 @@ def build() -> dict:
         ("debug", iml('if(1.debug = "yes"; "yes"; "no")')),
     ], 300, 0)
 
-    validate = maps_get(3, "Maps: validate caller address", "{{2.company}}", 600, 0)
+    geocode = http(3, "Maps: geocode caller address", 600, 0, GEOCODE_URL,
+                   qs=[("address", "{{2.address}}"), ("key", "{{2.maps_key}}")])
 
+    # A result that only matched a city (APPROXIMATE) would put the caller at a centroid and
+    # corrupt every drive time, so it counts as not found and the agent re-asks.
     address_check = setvars(4, "Address check", [
         ("maps_status", "{{3.data.status}}"),
-        ("element_status", "{{3.data.rows[1].elements[1].status}}"),
-        ("address_ok", iml('if(3.data.status = "OK" and 3.data.rows[1].elements[1].status = "OK"; "yes"; "no")')),
-        ("resolved_address", "{{3.data.origin_addresses[1]}}"),
-        ("fail_status", iml('if(3.data.status = "OK" or 3.data.status = "INVALID_REQUEST" or 3.data.status = "ZERO_RESULTS"; '
+        ("location_type", "{{3.data.results[1].geometry.location_type}}"),
+        ("address_ok", iml('if(3.data.status = "OK"; if(3.data.results[1].geometry.location_type = "APPROXIMATE"; "no"; "yes"); "no")')),
+        ("resolved_address", "{{3.data.results[1].formatted_address}}"),
+        ("lat", "{{3.data.results[1].geometry.location.lat}}"),
+        ("lng", "{{3.data.results[1].geometry.location.lng}}"),
+        ("fail_status", iml('if(3.data.status = "OK" or 3.data.status = "ZERO_RESULTS" or 3.data.status = "INVALID_REQUEST"; '
                             '"address_not_found"; "error")')),
     ], 900, 0)
 
@@ -253,7 +275,7 @@ def build() -> dict:
 
     calendar = {
         "id": 9,
-        "module": "google-calendar:makeApiCall",
+        "module": "google-calendar:makeAnAPICall",
         "version": 5,
         "parameters": {},
         "mapper": {
@@ -294,7 +316,10 @@ def build() -> dict:
                      cond('{{lower(join(map(10.attendees; "email"); ","))}}', "text:contain", "{{2.tech}}"),
                      cond("{{10.status}}", "text:notequal", "cancelled")))
 
-    drive = maps_get(12, "Maps: drive time caller -> job", "{{ifempty(11.location; 2.company)}}", 2700, 0)
+    drive = http(12, "Maps: drive time caller -> job", 2700, 0, ROUTES_URL, method="post",
+                 headers=[("X-Goog-Api-Key", "{{2.maps_key}}"),
+                          ("X-Goog-FieldMask", "originIndex,destinationIndex,status,condition,duration")],
+                 body=ROUTE_BODY)
 
     event_row = setvars(13, "Event row", [
         ("date", "{{11.date}}"),
@@ -305,19 +330,18 @@ def build() -> dict:
                        '"has_location":"{{11.has_location}}","drive_seconds":' + iml(DRIVE) + ',"far":"' + iml(FAR) + '"}'),
     ], 3000, 0)
 
+    row_fields = ["date", "hour_keys", "far", "drive_seconds", "debug_json"]
     aggregator = {
         "id": 14,
         "module": "builtin:BasicAggregator",
         "version": 1,
         "parameters": {"feeder": 10},
-        "mapper": {
-            "date": "{{13.date}}",
-            "hour_keys": "{{13.hour_keys}}",
-            "far": "{{13.far}}",
-            "drive_seconds": "{{13.drive_seconds}}",
-            "debug_json": "{{13.debug_json}}",
+        "mapper": {f: "{{13.%s}}" % f for f in row_fields},
+        "metadata": {
+            **designer(3300, 0, "All events -> array"),
+            "restore": {"extra": {"feeder": {"label": "Each event [10]"}}},
+            "expect": [{"name": f, "type": "text", "label": f} for f in row_fields],
         },
-        "metadata": designer(3300, 0, "All events -> array"),
     }
 
     busy_map = setvars(15, "Busy map", [
@@ -339,6 +363,7 @@ def build() -> dict:
     day = setvars(17, "Day (Eastern)", [
         ("date", iml(fmt(DAY, "YYYY-MM-DD"))),
         ("weekday", iml(f'parseNumber({fmt(DAY, "E")})')),  # ISO weekday 1 = Monday ... 7 = Sunday
+        ("far_day", iml(f'if(contains(15.far_dates; {fmt(DAY, "YYYY-MM-DD")}); "yes"; "no")')),
         ("day_name", iml(fmt(DAY, "dddd"))),
         ("spoken_day", iml(fmt(DAY, "dddd, MMMM D"))),
         ("ts08", ts(8)), ("ts10", ts(10)), ("ts12", ts(12)), ("ts14", ts(14)),
@@ -349,8 +374,8 @@ def build() -> dict:
         *[(f"s{h:02d}", slot_flag(h)) for h in (8, 10, 12, 14)],
         *[(f"frag{h:02d}", frag(h)) for h in (8, 10, 12, 14)],
     ], 4500, 0, filt("Working day, not excluded by the 15-minute rule",
-                     cond("{{17.weekday}}", "number:lessorequal", "5"),
-                     cond("{{15.far_dates}}", "text:notcontain", "{{17.date}}")))
+                     cond("{{17.weekday}}", "number:less", "6"),
+                     cond("{{17.far_day}}", "text:equal", "no")))
 
     text_agg = {
         "id": 19,
@@ -358,7 +383,11 @@ def build() -> dict:
         "version": 1,
         "parameters": {"rowSeparator": "", "feeder": 16},
         "mapper": {"value": "".join(iml(f'if(18.s{h:02d} = "yes"; 18.frag{h:02d}; "")') for h in (8, 10, 12, 14))},
-        "metadata": designer(4800, 0, "Open slots -> JSON"),
+        "metadata": {
+            **designer(4800, 0, "Open slots -> JSON"),
+            "restore": {"extra": {"feeder": {"label": "Each of 14 days [16]"}}, "parameters": {"rowSeparator": {"label": "Empty"}}},
+            "expect": [{"name": "value", "type": "text", "label": "Text"}],
+        },
     }
 
     final = respond(20, "Respond: ok / no_availability", (
@@ -392,7 +421,7 @@ def build() -> dict:
 
     return {
         "name": "check_availability",
-        "flow": [webhook, config, validate, address_check, router],
+        "flow": [webhook, config, geocode, address_check, router],
         "metadata": {
             "instant": True,
             "version": 1,
