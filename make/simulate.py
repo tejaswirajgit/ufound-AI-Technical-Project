@@ -513,16 +513,19 @@ def run_flow(flow: list[dict], ctx: Context, http) -> None:
         module = flow[index]
         if not passes(module, ctx):
             raise StopBundle
-        kind = module["module"]
-
-        if kind in ("builtin:BasicFeeder", "builtin:BasicRepeater"):
-            sink = next((j for j in range(index + 1, len(flow))
-                         if flow[j].get("parameters", {}).get("feeder") == module["id"]), None)
-            if sink is None:
-                raise IMLError(f"module {module['id']} has no aggregator")
+        # Any module an aggregator names as its feeder emits several bundles: the built-in
+        # iterator and repeater, and app modules like Google Calendar's Search events.
+        sink = next((j for j in range(index + 1, len(flow))
+                     if flow[j].get("parameters", {}).get("feeder") == module["id"]), None)
+        if sink is not None:
             body, aggregator = flow[index + 1:sink], flow[sink]
+            try:
+                bundles = _bundles(module, ctx, http)
+            except _ModuleError:
+                run_flow(module.get("onerror", []), ctx, http)
+                return
             rows = []
-            for bundle in _bundles(module, ctx):
+            for bundle in bundles:
                 ctx.outputs[module["id"]] = bundle
                 try:
                     run_flow(body, ctx, http)
@@ -545,14 +548,21 @@ def run_flow(flow: list[dict], ctx: Context, http) -> None:
         index += 1
 
 
-def _bundles(module: dict, ctx: Context) -> list[dict]:
-    if module["module"] == "builtin:BasicFeeder":
+def _bundles(module: dict, ctx: Context, http) -> list[dict]:
+    kind = module["module"]
+    if kind == "builtin:BasicFeeder":
         array = ctx.evaluate(module["mapper"]["array"])
         return array if isinstance(array, list) else []
-    start = int(to_number(ctx.evaluate(module["mapper"]["start"])))
-    repeats = int(to_number(ctx.evaluate(module["mapper"]["repeats"])))
-    step = int(to_number(ctx.evaluate(module["mapper"].get("step", "1")))) or 1
-    return [{"i": float(start + n * step)} for n in range(repeats)]
+    if kind == "builtin:BasicRepeater":
+        start = int(to_number(ctx.evaluate(module["mapper"]["start"])))
+        repeats = int(to_number(ctx.evaluate(module["mapper"]["repeats"])))
+        step = int(to_number(ctx.evaluate(module["mapper"].get("step", "1")))) or 1
+        return [{"i": float(start + n * step)} for n in range(repeats)]
+    mapper = {k: ctx.evaluate(v) if isinstance(v, str) else v for k, v in (module.get("mapper") or {}).items()}
+    result = http(module["id"], mapper)
+    if result is None:
+        raise _ModuleError(f"module {module['id']} failed")
+    return result if isinstance(result, list) else [result]
 
 
 class _ModuleError(Exception):

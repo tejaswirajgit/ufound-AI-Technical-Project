@@ -48,12 +48,19 @@ def mods(bp):
 
 
 def test_no_secrets_in_deliverables():
-    files = (list((ROOT / "make").glob("*.json")) + list((ROOT / "retell").glob("*.json"))
-             + [PROMPT, ROOT / "env.example"])
-    for path in files:
+    """Scans what gets committed. *.raw.json is a live export and is ignored by git."""
+    files = [p for p in list((ROOT / "make").glob("*.json")) + list((ROOT / "retell").glob("*.json"))
+             if not p.name.endswith(".raw.json")]
+    for path in files + [PROMPT, ROOT / "env.example"]:
         text = path.read_text(encoding="utf-8")
         for rx in SECRET_PATTERNS:
             assert not rx.search(text), f"secret pattern {rx.pattern} in {path.name}"
+
+
+def test_raw_exports_are_ignored_by_git():
+    """A raw export carries the Maps key and the webhook URL; only stripped copies are committed."""
+    ignore = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "make/*.raw.json" in ignore and "retell/*.raw.json" in ignore
 
 
 def test_local_env_file_stays_out_of_git():
@@ -112,7 +119,7 @@ def test_every_response_body_is_json_with_status_and_slots(mods):
 def test_rules_are_encoded(bp, mods):
     text = "\n".join(strings(bp))  # raw mapper strings, not JSON-escaped
     for needle in ['"plumbing"; "tech1@ufound-ai.com"', '"electrical"; "tech2@ufound-ai.com"', '"hvac"; "tech3@ufound-ai.com"',
-                   "2.now_ts + 7200", "<= 900", 'condition = "ROUTE_EXISTS"', "singleEvents",
+                   "2.now_ts + 7200", "<= 900", 'condition = "ROUTE_EXISTS"',
                    "routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", "maps.googleapis.com/maps/api/geocode/json"]:
         assert needle in text, needle
     by_id = {m["id"]: m for m in mods}
@@ -121,7 +128,15 @@ def test_rules_are_encoded(bp, mods):
                                                      {"a": "{{17.far_day}}", "o": "text:equal", "b": "no"}]
     assert json.loads(IML_BLOCK.sub("0", by_id[12]["mapper"]["data"]))["travelMode"] == "DRIVE"
     assert by_id[12]["parameters"]["handleErrors"] is True and by_id[3]["parameters"]["handleErrors"] is True
-    assert by_id[11]["filter"]["conditions"][0][1] == {"a": "{{10.status}}", "o": "text:notequal", "b": "cancelled"}
+    assert by_id[11]["filter"]["conditions"][0][1] == {"a": "{{9.status}}", "o": "text:notequal", "b": "cancelled"}
+    # Search events: recurring jobs expanded, and the default limit of 10 raised so nothing is
+    # silently truncated. Both were wrong on the first live run.
+    calendar = by_id[9]
+    assert calendar["module"] == "google-calendar:searchEvents"
+    assert calendar["mapper"]["singleEvents"] is True
+    assert int(calendar["mapper"]["limit"]) >= 250
+    assert calendar["parameters"]["__IMTCONN__"] is None, "never commit a connection id"
+    assert by_id[14]["parameters"]["feeder"] == 9
     for m in mods:
         if m["module"] == "http:ActionSendData" or m["module"].startswith("google-calendar"):
             assert m["onerror"][-1]["module"] == "builtin:Ignore", f"module {m['id']} has no error handler"

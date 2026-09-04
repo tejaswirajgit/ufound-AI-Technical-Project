@@ -7,7 +7,7 @@ mocked Google responses, and every case is compared with reference/availability.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, time as dtime, timedelta
 
 import pytest
 
@@ -20,17 +20,19 @@ GEOCODED = "1600 Barton Springs Rd, Austin, TX 78704, USA"
 
 
 def google_event(e: Event) -> dict:
-    """The reference's Event as Google Calendar returns it."""
-    out = {"status": "confirmed", "location": e.location,
-           "attendees": [{"email": a} for a in e.attendees if a]}
+    """The reference's Event as Make's Search events module emits it.
+
+    Make flattens the raw API's start/end into single date values, and renders an all-day
+    event as midnight to midnight, so there is no separate all-day flag to carry.
+    """
     if e.all_day:
         d = e.start.astimezone(TZ).date()
-        out["start"] = {"date": d.isoformat()}
-        out["end"] = {"date": (d + timedelta(days=1)).isoformat()}
+        start = datetime.combine(d, dtime(0), TZ)
+        end = datetime.combine(d + timedelta(days=1), dtime(0), TZ)
     else:
-        out["start"] = {"dateTime": e.start.astimezone(TZ).isoformat()}
-        out["end"] = {"dateTime": e.end.astimezone(TZ).isoformat()}
-    return out
+        start, end = e.start.astimezone(TZ), e.end.astimezone(TZ)
+    return {"status": "confirmed", "location": e.location, "start": start, "end": end,
+            "attendees": [{"email": a} for a in e.attendees if a]}
 
 
 def responder(events, drive, *, geocode_status="OK", location_type="ROOFTOP", fail=()):
@@ -44,8 +46,8 @@ def responder(events, drive, *, geocode_status="OK", location_type="ROOFTOP", fa
             return {"data": {"status": "OK", "results": [{
                 "formatted_address": GEOCODED,
                 "geometry": {"location": {"lat": 30.2626, "lng": -97.7664}, "location_type": location_type}}]}}
-        if module_id == 9:
-            return {"body": {"items": [google_event(e) for e in events]}}
+        if module_id == 9:  # Search events emits one bundle per event
+            return [google_event(e) for e in events]
         if module_id == 12:
             destination = json.loads(mapper["data"])["destinations"][0]["waypoint"]["address"]
             seconds = drive.get(destination)
@@ -147,7 +149,7 @@ def test_cancelled_event_is_ignored():
     def cancelled(module_id, mapper):
         result = http(module_id, mapper)
         if module_id == 9:
-            for item in result["body"]["items"]:
+            for item in result:
                 item["status"] = "cancelled"
         return result
 
