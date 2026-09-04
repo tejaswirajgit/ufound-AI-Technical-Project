@@ -1,12 +1,10 @@
 """Checks a Google Maps API key against the two APIs the scenario uses, before wiring up Make.
 
-The key is read from the environment, never from an argument, so it stays out of shell history
-and out of the process list. It is never printed.
+The key comes from the project's .env file, or from the environment if it is already set
+there. It is never taken as an argument, so it stays out of shell history and out of the
+process list, and it is never printed.
 
-    Git Bash / macOS / Linux:   export GOOGLE_MAPS_API_KEY=...
-    Windows PowerShell:         $env:GOOGLE_MAPS_API_KEY="..."
-    Windows cmd:                set GOOGLE_MAPS_API_KEY=...
-
+    cp env.example .env     then put the real key in .env
     python reference/check_maps_key.py
     python reference/check_maps_key.py --address "1600 Barton Springs Rd, Austin, TX 78704"
 
@@ -21,6 +19,9 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from reference import localenv  # noqa: E402
 
 GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 ROUTES_URL = "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix"
@@ -126,10 +127,14 @@ def main() -> int:
     parser.add_argument("--job", default=COMPANY, help="a job address to measure the drive to")
     args = parser.parse_args()
 
+    localenv.load()
     key = os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()
-    if not key:
-        print("No key found. Set GOOGLE_MAPS_API_KEY in your environment first.", file=sys.stderr)
-        print(__doc__, file=sys.stderr)
+    if not key or "replace_me" in key:
+        where = localenv.DEFAULT_PATH
+        problem = "still holds the placeholder" if key else "has no GOOGLE_MAPS_API_KEY"
+        print(f"No usable key: {where.name} {problem}." if where.is_file()
+              else f"No key found and no {where.name} file in {where.parent}.", file=sys.stderr)
+        print("\n  cp env.example .env      then put the real key in .env\n", file=sys.stderr)
         return 2
     print(f"Key ending {key[-4:]}, {len(key)} characters.\n")
 
