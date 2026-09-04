@@ -1,0 +1,51 @@
+"""Blank the Google Maps key, Make webhook URL, webhook id and connection ids in raw exports.
+
+    python reference/strip_secrets.py
+
+Reads  make/check_availability.raw.json  -> writes make/check_availability.blueprint.json
+Reads  retell/agent-export.raw.json      -> writes retell/agent-export.json
+The *.raw.json files are gitignored; only the stripped files are committed.
+tests/test_artifacts.py fails the build if a key or hook URL slips through.
+"""
+from __future__ import annotations
+
+import pathlib
+import re
+import sys
+
+PAIRS = [
+    ("make/check_availability.raw.json", "make/check_availability.blueprint.json"),
+    ("retell/agent-export.raw.json", "retell/agent-export.json"),
+]
+RULES = [
+    (re.compile(r"AIza[0-9A-Za-z_\-]{35,}"), "PASTE_GOOGLE_MAPS_API_KEY"),
+    (re.compile(r"https://hook\.[a-z0-9.\-]+\.make\.com/[A-Za-z0-9]+"), "MAKE_WEBHOOK_URL"),
+    (re.compile(r'"hook":\s*\d+'), '"hook": 0'),
+    (re.compile(r'"__IMTCONN__":\s*\d+'), '"__IMTCONN__": null'),
+]
+
+
+def strip(text: str) -> str:
+    for rx, replacement in RULES:
+        text = rx.sub(replacement, text)
+    return text
+
+
+def main() -> int:
+    root = pathlib.Path(__file__).resolve().parents[1]
+    done = 0
+    for src, dst in PAIRS:
+        path = root / src
+        if not path.exists():
+            continue
+        (root / dst).write_text(strip(path.read_text(encoding="utf-8")), encoding="utf-8")
+        print(f"{src} -> {dst}")
+        done += 1
+    if not done:
+        print("no raw exports found; save exports as " + " or ".join(p[0] for p in PAIRS), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

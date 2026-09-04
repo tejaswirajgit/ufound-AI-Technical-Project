@@ -1,0 +1,999 @@
+{
+  "name": "check_availability",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": {
+        "maxResults": 1
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": {
+          "x": 0,
+          "y": 0,
+          "name": "Retell: check_availability"
+        },
+        "interface": [
+          {
+            "name": "name",
+            "type": "text"
+          },
+          {
+            "name": "args",
+            "type": "collection",
+            "spec": [
+              {
+                "name": "trade",
+                "type": "text"
+              },
+              {
+                "name": "address",
+                "type": "text"
+              }
+            ]
+          },
+          {
+            "name": "debug",
+            "type": "text"
+          },
+          {
+            "name": "call",
+            "type": "collection",
+            "spec": []
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "module": "util:SetVariables",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "variables": [
+          {
+            "name": "trade",
+            "value": "{{1.args.trade}}"
+          },
+          {
+            "name": "tech",
+            "value": "{{switch(lower(trim(1.args.trade)); \"plumbing\"; \"tech1@ufound-ai.com\"; \"electrical\"; \"tech2@ufound-ai.com\"; \"hvac\"; \"tech3@ufound-ai.com\"; \"\")}}"
+          },
+          {
+            "name": "address",
+            "value": "{{trim(1.args.address)}}"
+          },
+          {
+            "name": "company",
+            "value": "4820 Burnet Road, Austin, TX 78756, USA"
+          },
+          {
+            "name": "calendar_id",
+            "value": "PASTE_UFOUND_DISPATCH_CALENDAR_ID"
+          },
+          {
+            "name": "maps_key",
+            "value": "PASTE_GOOGLE_MAPS_API_KEY"
+          },
+          {
+            "name": "timezone",
+            "value": "America/New_York"
+          },
+          {
+            "name": "today",
+            "value": "{{formatDate(now; \"YYYY-MM-DD\"; \"America/New_York\")}}"
+          },
+          {
+            "name": "today_spoken",
+            "value": "{{formatDate(now; \"dddd, MMMM D\"; \"America/New_York\")}}"
+          },
+          {
+            "name": "now_ts",
+            "value": "{{parseNumber(formatDate(now; \"X\"))}}"
+          },
+          {
+            "name": "window_noon",
+            "value": "{{setHour(setMinute(setSecond(now; 0); 0); 12; \"America/New_York\")}}"
+          },
+          {
+            "name": "debug",
+            "value": "{{if(1.debug = \"yes\"; \"yes\"; \"no\")}}"
+          }
+        ],
+        "scope": "roundtrip"
+      },
+      "metadata": {
+        "designer": {
+          "x": 300,
+          "y": 0,
+          "name": "Config & routing"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "module": "http:ActionSendData",
+      "version": 3,
+      "parameters": {
+        "handleErrors": false,
+        "useNewZLibDeCompress": true
+      },
+      "mapper": {
+        "url": "https://maps.googleapis.com/maps/api/distancematrix/json",
+        "serializeUrl": false,
+        "method": "get",
+        "headers": [],
+        "qs": [
+          {
+            "name": "origins",
+            "value": "{{2.address}}"
+          },
+          {
+            "name": "destinations",
+            "value": "{{2.company}}"
+          },
+          {
+            "name": "mode",
+            "value": "driving"
+          },
+          {
+            "name": "key",
+            "value": "{{2.maps_key}}"
+          }
+        ],
+        "bodyType": "raw",
+        "parseResponse": true,
+        "authUser": "",
+        "authPass": "",
+        "timeout": "20",
+        "shareCookies": false,
+        "ca": "",
+        "rejectUnauthorized": true,
+        "followRedirect": true,
+        "useQuerystring": false,
+        "gzip": true,
+        "useMtls": false,
+        "contentType": "application/json",
+        "data": "",
+        "followAllRedirects": false
+      },
+      "metadata": {
+        "designer": {
+          "x": 600,
+          "y": 0,
+          "name": "Maps: validate caller address"
+        }
+      },
+      "onerror": [
+        {
+          "id": 31,
+          "module": "gateway:WebhookRespond",
+          "version": 1,
+          "parameters": {},
+          "mapper": {
+            "status": "200",
+            "body": "{\"status\":\"error\",\"trade\":\"{{2.trade}}\",\"technician\":\"{{2.tech}}\",\"timezone\":\"America/New_York\",\"slots\":[],\"slot_count\":0,\"message\":\"The scheduling system is temporarily unavailable. Apologise and tell the caller a team member will call back shortly to schedule.\"}",
+            "headers": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "metadata": {
+            "designer": {
+              "x": 600,
+              "y": 220,
+              "name": "Respond: error"
+            }
+          }
+        },
+        {
+          "id": 32,
+          "module": "builtin:Ignore",
+          "version": 1,
+          "mapper": null,
+          "metadata": {
+            "designer": {
+              "x": 900,
+              "y": 220
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "module": "util:SetVariables",
+      "version": 1,
+      "parameters": {},
+      "mapper": {
+        "variables": [
+          {
+            "name": "maps_status",
+            "value": "{{3.data.status}}"
+          },
+          {
+            "name": "element_status",
+            "value": "{{3.data.rows[1].elements[1].status}}"
+          },
+          {
+            "name": "address_ok",
+            "value": "{{if(3.data.status = \"OK\" and 3.data.rows[1].elements[1].status = \"OK\"; \"yes\"; \"no\")}}"
+          },
+          {
+            "name": "resolved_address",
+            "value": "{{3.data.origin_addresses[1]}}"
+          },
+          {
+            "name": "fail_status",
+            "value": "{{if(3.data.status = \"OK\" or 3.data.status = \"INVALID_REQUEST\" or 3.data.status = \"ZERO_RESULTS\"; \"address_not_found\"; \"error\")}}"
+          }
+        ],
+        "scope": "roundtrip"
+      },
+      "metadata": {
+        "designer": {
+          "x": 900,
+          "y": 0,
+          "name": "Address check"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "mapper": null,
+      "metadata": {
+        "designer": {
+          "x": 1200,
+          "y": 0
+        }
+      },
+      "routes": [
+        {
+          "flow": [
+            {
+              "id": 6,
+              "module": "gateway:WebhookRespond",
+              "version": 1,
+              "parameters": {},
+              "mapper": {
+                "status": "200",
+                "body": "{\"status\":\"unknown_trade\",\"trade\":\"{{2.trade}}\",\"timezone\":\"America/New_York\",\"slots\":[],\"slot_count\":0,\"message\":\"That job type does not match one of our technicians. Ask one more short question about the problem, then call check_availability again with Plumbing, Electrical or HVAC.\"}",
+                "headers": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1500,
+                  "y": -400,
+                  "name": "Respond: unknown_trade"
+                }
+              },
+              "filter": {
+                "name": "Unknown trade",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{2.tech}}",
+                      "o": "text:equal",
+                      "b": ""
+                    }
+                  ]
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 7,
+              "module": "gateway:WebhookRespond",
+              "version": 1,
+              "parameters": {},
+              "mapper": {
+                "status": "200",
+                "body": "{\"status\":\"{{4.fail_status}}\",\"trade\":\"{{2.trade}}\",\"technician\":\"{{2.tech}}\",\"timezone\":\"America/New_York\",\"slots\":[],\"slot_count\":0,\"maps_status\":\"{{4.maps_status}}\",\"message\":\"{{if(4.fail_status = \"address_not_found\"; \"The address could not be located. Ask the caller to repeat the street number, street name, city and ZIP code, then call check_availability again.\"; \"The scheduling system is temporarily unavailable. Apologise and tell the caller a team member will call back shortly to schedule.\")}}\"}",
+                "headers": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1500,
+                  "y": -200,
+                  "name": "Respond: address_not_found / error"
+                }
+              },
+              "filter": {
+                "name": "Address not found or Maps error",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{2.tech}}",
+                      "o": "text:notequal",
+                      "b": ""
+                    },
+                    {
+                      "a": "{{4.address_ok}}",
+                      "o": "text:equal",
+                      "b": "no"
+                    }
+                  ]
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "flow": [
+            {
+              "id": 8,
+              "module": "util:SetVariables",
+              "version": 1,
+              "parameters": {},
+              "mapper": {
+                "variables": [
+                  {
+                    "name": "time_min",
+                    "value": "{{formatDate(setHour(setMinute(setSecond(now; 0); 0); 0; \"America/New_York\"); \"YYYY-MM-DDTHH:mm:ssZ\"; \"UTC\")}}"
+                  },
+                  {
+                    "name": "time_max",
+                    "value": "{{formatDate(addDays(setHour(setMinute(setSecond(now; 0); 0); 0; \"America/New_York\"); 14); \"YYYY-MM-DDTHH:mm:ssZ\"; \"UTC\")}}"
+                  },
+                  {
+                    "name": "window_to",
+                    "value": "{{formatDate(addDays(2.window_noon; 13); \"YYYY-MM-DD\"; \"America/New_York\")}}"
+                  },
+                  {
+                    "name": "earliest_ts",
+                    "value": "{{2.now_ts + 7200}}"
+                  }
+                ],
+                "scope": "roundtrip"
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1500,
+                  "y": 0,
+                  "name": "Time window"
+                }
+              },
+              "filter": {
+                "name": "Known trade and valid address",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{2.tech}}",
+                      "o": "text:notequal",
+                      "b": ""
+                    },
+                    {
+                      "a": "{{4.address_ok}}",
+                      "o": "text:equal",
+                      "b": "yes"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "id": 9,
+              "module": "google-calendar:makeApiCall",
+              "version": 5,
+              "parameters": {},
+              "mapper": {
+                "url": "/calendar/v3/calendars/{{2.calendar_id}}/events",
+                "method": "GET",
+                "headers": [],
+                "qs": [
+                  {
+                    "key": "timeMin",
+                    "value": "{{8.time_min}}"
+                  },
+                  {
+                    "key": "timeMax",
+                    "value": "{{8.time_max}}"
+                  },
+                  {
+                    "key": "singleEvents",
+                    "value": "true"
+                  },
+                  {
+                    "key": "orderBy",
+                    "value": "startTime"
+                  },
+                  {
+                    "key": "maxResults",
+                    "value": "250"
+                  }
+                ],
+                "body": ""
+              },
+              "metadata": {
+                "designer": {
+                  "x": 1800,
+                  "y": 0,
+                  "name": "Calendar: events in window"
+                }
+              },
+              "onerror": [
+                {
+                  "id": 91,
+                  "module": "gateway:WebhookRespond",
+                  "version": 1,
+                  "parameters": {},
+                  "mapper": {
+                    "status": "200",
+                    "body": "{\"status\":\"error\",\"trade\":\"{{2.trade}}\",\"technician\":\"{{2.tech}}\",\"timezone\":\"America/New_York\",\"slots\":[],\"slot_count\":0,\"message\":\"The scheduling system is temporarily unavailable. Apologise and tell the caller a team member will call back shortly to schedule.\"}",
+                    "headers": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ]
+                  },
+                  "metadata": {
+                    "designer": {
+                      "x": 1800,
+                      "y": 220,
+                      "name": "Respond: error"
+                    }
+                  }
+                },
+                {
+                  "id": 92,
+                  "module": "builtin:Ignore",
+                  "version": 1,
+                  "mapper": null,
+                  "metadata": {
+                    "designer": {
+                      "x": 2100,
+                      "y": 220
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": 10,
+              "module": "builtin:BasicFeeder",
+              "version": 1,
+              "parameters": {},
+              "mapper": {
+                "array": "{{9.body.items}}"
+              },
+              "metadata": {
+                "designer": {
+                  "x": 2100,
+                  "y": 0,
+                  "name": "Each event"
+                }
+              }
+            },
+            {
+              "id": 11,
+              "module": "util:SetVariables",
+              "version": 1,
+              "parameters": {},
+              "mapper": {
+                "variables": [
+                  {
+                    "name": "all_day",
+                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; \"yes\"; \"no\")}}"
+                  },
+                  {
+                    "name": "date",
+                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}}"
+                  },
+                  {
+                    "name": "start_h",
+                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 0; parseNumber(formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"H\"; \"America/New_York\")))}}"
+                  },
+                  {
+                    "name": "end_h_eff",
+                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 24; if(formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\") = formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"); parseNumber(formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"H\"; \"America/New_York\")) + if(parseNumber(formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"m\"; \"America/New_York\")) > 0; 1; 0); 24))}}"
+                  },
+                  {
+                    "name": "location",
+                    "value": "{{ifempty(10.location; \"\")}}"
+                  },
+                  {
+                    "name": "has_location",
+                    "value": "{{if(ifempty(10.location; \"\") = \"\"; \"no\"; \"yes\")}}"
+                  },
+                  {
+                    "name": "k08",
+                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 08|"
+                  },
+                  {
+                    "name": "k09",
+                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 09|"
+                  },
+                  {
+                    "name": "k10",
+                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 10|"
+                  },
+                  {
+                    "name": "k11",
+                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 11|"
+                  },
+                  {
+                    "name": "k12",
+                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 12|"
+                  },
+                  {
+                    "name": "k13",
+                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 13|"
+                  },
+                  {
+                    "name": "k14",
+                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 14|"
+                  },
+                  {
+                    "name": "k15",
+                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 15|"
+                  }
+                ],
+                "scope": "roundtrip"
+              },
+              "metadata": {
+                "designer": {
+                  "x": 2400,
+                  "y": 0,
+                  "name": "Event times (Eastern)"
+                }
+              },
+              "filter": {
+                "name": "This technician's events, not cancelled",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{lower(join(map(10.attendees; \"email\"); \",\"))}}",
+                      "o": "text:contain",
+                      "b": "{{2.tech}}"
+                    },
+                    {
+                      "a": "{{10.status}}",
+                      "o": "text:notequal",
+                      "b": "cancelled"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "id": 12,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "parameters": {
+                "handleErrors": false,
+                "useNewZLibDeCompress": true
+              },
+              "mapper": {
+                "url": "https://maps.googleapis.com/maps/api/distancematrix/json",
+                "serializeUrl": false,
+                "method": "get",
+                "headers": [],
+                "qs": [
+                  {
+                    "name": "origins",
+                    "value": "{{2.address}}"
+                  },
+                  {
+                    "name": "destinations",
+                    "value": "{{ifempty(11.location; 2.company)}}"
+                  },
+                  {
+                    "name": "mode",
+                    "value": "driving"
+                  },
+                  {
+                    "name": "key",
+                    "value": "{{2.maps_key}}"
+                  }
+                ],
+                "bodyType": "raw",
+                "parseResponse": true,
+                "authUser": "",
+                "authPass": "",
+                "timeout": "20",
+                "shareCookies": false,
+                "ca": "",
+                "rejectUnauthorized": true,
+                "followRedirect": true,
+                "useQuerystring": false,
+                "gzip": true,
+                "useMtls": false,
+                "contentType": "application/json",
+                "data": "",
+                "followAllRedirects": false
+              },
+              "metadata": {
+                "designer": {
+                  "x": 2700,
+                  "y": 0,
+                  "name": "Maps: drive time caller -> job"
+                }
+              },
+              "onerror": [
+                {
+                  "id": 121,
+                  "module": "gateway:WebhookRespond",
+                  "version": 1,
+                  "parameters": {},
+                  "mapper": {
+                    "status": "200",
+                    "body": "{\"status\":\"error\",\"trade\":\"{{2.trade}}\",\"technician\":\"{{2.tech}}\",\"timezone\":\"America/New_York\",\"slots\":[],\"slot_count\":0,\"message\":\"The scheduling system is temporarily unavailable. Apologise and tell the caller a team member will call back shortly to schedule.\"}",
+                    "headers": [
+                      {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                      }
+                    ]
+                  },
+                  "metadata": {
+                    "designer": {
+                      "x": 2700,
+                      "y": 220,
+                      "name": "Respond: error"
+                    }
+                  }
+                },
+                {
+                  "id": 122,
+                  "module": "builtin:Ignore",
+                  "version": 1,
+                  "mapper": null,
+                  "metadata": {
+                    "designer": {
+                      "x": 3000,
+                      "y": 220
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "id": 13,
+              "module": "util:SetVariables",
+              "version": 1,
+              "parameters": {},
+              "mapper": {
+                "variables": [
+                  {
+                    "name": "date",
+                    "value": "{{11.date}}"
+                  },
+                  {
+                    "name": "hour_keys",
+                    "value": "{{if(11.start_h <= 8 and 11.end_h_eff > 8; 11.k08; \"\")}}{{if(11.start_h <= 9 and 11.end_h_eff > 9; 11.k09; \"\")}}{{if(11.start_h <= 10 and 11.end_h_eff > 10; 11.k10; \"\")}}{{if(11.start_h <= 11 and 11.end_h_eff > 11; 11.k11; \"\")}}{{if(11.start_h <= 12 and 11.end_h_eff > 12; 11.k12; \"\")}}{{if(11.start_h <= 13 and 11.end_h_eff > 13; 11.k13; \"\")}}{{if(11.start_h <= 14 and 11.end_h_eff > 14; 11.k14; \"\")}}{{if(11.start_h <= 15 and 11.end_h_eff > 15; 11.k15; \"\")}}"
+                  },
+                  {
+                    "name": "drive_seconds",
+                    "value": "{{if(11.has_location = \"yes\"; ifempty(12.data.rows[1].elements[1].duration.value; -1); 0)}}"
+                  },
+                  {
+                    "name": "far",
+                    "value": "{{if(11.has_location = \"no\"; \"no\"; if(12.data.status = \"OK\" and 12.data.rows[1].elements[1].status = \"OK\" and 12.data.rows[1].elements[1].duration.value <= 900; \"no\"; \"yes\"))}}"
+                  },
+                  {
+                    "name": "debug_json",
+                    "value": "{\"date\":\"{{11.date}}\",\"start_h\":{{11.start_h}},\"end_h\":{{11.end_h_eff}},\"all_day\":\"{{11.all_day}}\",\"has_location\":\"{{11.has_location}}\",\"drive_seconds\":{{if(11.has_location = \"yes\"; ifempty(12.data.rows[1].elements[1].duration.value; -1); 0)}},\"far\":\"{{if(11.has_location = \"no\"; \"no\"; if(12.data.status = \"OK\" and 12.data.rows[1].elements[1].status = \"OK\" and 12.data.rows[1].elements[1].duration.value <= 900; \"no\"; \"yes\"))}}\"}"
+                  }
+                ],
+                "scope": "roundtrip"
+              },
+              "metadata": {
+                "designer": {
+                  "x": 3000,
+                  "y": 0,
+                  "name": "Event row"
+                }
+              }
+            },
+            {
+              "id": 14,
+              "module": "builtin:BasicAggregator",
+              "version": 1,
+              "parameters": {
+                "feeder": 10
+              },
+              "mapper": {
+                "date": "{{13.date}}",
+                "hour_keys": "{{13.hour_keys}}",
+                "far": "{{13.far}}",
+                "drive_seconds": "{{13.drive_seconds}}",
+                "debug_json": "{{13.debug_json}}"
+              },
+              "metadata": {
+                "designer": {
+                  "x": 3300,
+                  "y": 0,
+                  "name": "All events -> array"
+                }
+              }
+            },
+            {
+              "id": 15,
+              "module": "util:SetVariables",
+              "version": 1,
+              "parameters": {},
+              "mapper": {
+                "variables": [
+                  {
+                    "name": "busy",
+                    "value": "{{join(map(14.array; \"hour_keys\"); \"\")}}"
+                  },
+                  {
+                    "name": "far_dates",
+                    "value": "{{join(map(14.array; \"date\"; \"far\"; \"yes\"); \"|\")}}"
+                  },
+                  {
+                    "name": "event_count",
+                    "value": "{{length(14.array)}}"
+                  },
+                  {
+                    "name": "debug_events",
+                    "value": "{{if(2.debug = \"yes\"; join(map(14.array; \"debug_json\"); \",\"); \"\")}}"
+                  }
+                ],
+                "scope": "roundtrip"
+              },
+              "metadata": {
+                "designer": {
+                  "x": 3600,
+                  "y": 0,
+                  "name": "Busy map"
+                }
+              }
+            },
+            {
+              "id": 16,
+              "module": "builtin:BasicRepeater",
+              "version": 1,
+              "parameters": {},
+              "mapper": {
+                "start": "0",
+                "repeats": "14",
+                "step": "1"
+              },
+              "metadata": {
+                "designer": {
+                  "x": 3900,
+                  "y": 0,
+                  "name": "Each of 14 days"
+                }
+              }
+            },
+            {
+              "id": 17,
+              "module": "util:SetVariables",
+              "version": 1,
+              "parameters": {},
+              "mapper": {
+                "variables": [
+                  {
+                    "name": "date",
+                    "value": "{{formatDate(addDays(2.window_noon; 16.i); \"YYYY-MM-DD\"; \"America/New_York\")}}"
+                  },
+                  {
+                    "name": "weekday",
+                    "value": "{{parseNumber(formatDate(addDays(2.window_noon; 16.i); \"E\"; \"America/New_York\"))}}"
+                  },
+                  {
+                    "name": "day_name",
+                    "value": "{{formatDate(addDays(2.window_noon; 16.i); \"dddd\"; \"America/New_York\")}}"
+                  },
+                  {
+                    "name": "spoken_day",
+                    "value": "{{formatDate(addDays(2.window_noon; 16.i); \"dddd, MMMM D\"; \"America/New_York\")}}"
+                  },
+                  {
+                    "name": "ts08",
+                    "value": "{{parseNumber(formatDate(setHour(addDays(2.window_noon; 16.i); 8; \"America/New_York\"); \"X\"))}}"
+                  },
+                  {
+                    "name": "ts10",
+                    "value": "{{parseNumber(formatDate(setHour(addDays(2.window_noon; 16.i); 10; \"America/New_York\"); \"X\"))}}"
+                  },
+                  {
+                    "name": "ts12",
+                    "value": "{{parseNumber(formatDate(setHour(addDays(2.window_noon; 16.i); 12; \"America/New_York\"); \"X\"))}}"
+                  },
+                  {
+                    "name": "ts14",
+                    "value": "{{parseNumber(formatDate(setHour(addDays(2.window_noon; 16.i); 14; \"America/New_York\"); \"X\"))}}"
+                  },
+                  {
+                    "name": "k08",
+                    "value": "{{formatDate(addDays(2.window_noon; 16.i); \"YYYY-MM-DD\"; \"America/New_York\")}} 08|"
+                  },
+                  {
+                    "name": "k09",
+                    "value": "{{formatDate(addDays(2.window_noon; 16.i); \"YYYY-MM-DD\"; \"America/New_York\")}} 09|"
+                  },
+                  {
+                    "name": "k10",
+                    "value": "{{formatDate(addDays(2.window_noon; 16.i); \"YYYY-MM-DD\"; \"America/New_York\")}} 10|"
+                  },
+                  {
+                    "name": "k11",
+                    "value": "{{formatDate(addDays(2.window_noon; 16.i); \"YYYY-MM-DD\"; \"America/New_York\")}} 11|"
+                  },
+                  {
+                    "name": "k12",
+                    "value": "{{formatDate(addDays(2.window_noon; 16.i); \"YYYY-MM-DD\"; \"America/New_York\")}} 12|"
+                  },
+                  {
+                    "name": "k13",
+                    "value": "{{formatDate(addDays(2.window_noon; 16.i); \"YYYY-MM-DD\"; \"America/New_York\")}} 13|"
+                  },
+                  {
+                    "name": "k14",
+                    "value": "{{formatDate(addDays(2.window_noon; 16.i); \"YYYY-MM-DD\"; \"America/New_York\")}} 14|"
+                  },
+                  {
+                    "name": "k15",
+                    "value": "{{formatDate(addDays(2.window_noon; 16.i); \"YYYY-MM-DD\"; \"America/New_York\")}} 15|"
+                  }
+                ],
+                "scope": "roundtrip"
+              },
+              "metadata": {
+                "designer": {
+                  "x": 4200,
+                  "y": 0,
+                  "name": "Day (Eastern)"
+                }
+              }
+            },
+            {
+              "id": 18,
+              "module": "util:SetVariables",
+              "version": 1,
+              "parameters": {},
+              "mapper": {
+                "variables": [
+                  {
+                    "name": "s08",
+                    "value": "{{if(contains(15.busy; 17.k08) and contains(15.busy; 17.k09); \"no\"; if(17.date = 2.today and 17.ts08 < 8.earliest_ts; \"no\"; \"yes\"))}}"
+                  },
+                  {
+                    "name": "s10",
+                    "value": "{{if(contains(15.busy; 17.k10) and contains(15.busy; 17.k11); \"no\"; if(17.date = 2.today and 17.ts10 < 8.earliest_ts; \"no\"; \"yes\"))}}"
+                  },
+                  {
+                    "name": "s12",
+                    "value": "{{if(contains(15.busy; 17.k12) and contains(15.busy; 17.k13); \"no\"; if(17.date = 2.today and 17.ts12 < 8.earliest_ts; \"no\"; \"yes\"))}}"
+                  },
+                  {
+                    "name": "s14",
+                    "value": "{{if(contains(15.busy; 17.k14) and contains(15.busy; 17.k15); \"no\"; if(17.date = 2.today and 17.ts14 < 8.earliest_ts; \"no\"; \"yes\"))}}"
+                  },
+                  {
+                    "name": "frag08",
+                    "value": ",{\"date\":\"{{17.date}}\",\"day\":\"{{17.day_name}}\",\"start\":\"08:00\",\"end\":\"10:00\",\"spoken\":\"{{17.spoken_day}}, 8 AM to 10 AM\"}"
+                  },
+                  {
+                    "name": "frag10",
+                    "value": ",{\"date\":\"{{17.date}}\",\"day\":\"{{17.day_name}}\",\"start\":\"10:00\",\"end\":\"12:00\",\"spoken\":\"{{17.spoken_day}}, 10 AM to 12 PM\"}"
+                  },
+                  {
+                    "name": "frag12",
+                    "value": ",{\"date\":\"{{17.date}}\",\"day\":\"{{17.day_name}}\",\"start\":\"12:00\",\"end\":\"14:00\",\"spoken\":\"{{17.spoken_day}}, 12 PM to 2 PM\"}"
+                  },
+                  {
+                    "name": "frag14",
+                    "value": ",{\"date\":\"{{17.date}}\",\"day\":\"{{17.day_name}}\",\"start\":\"14:00\",\"end\":\"16:00\",\"spoken\":\"{{17.spoken_day}}, 2 PM to 4 PM\"}"
+                  }
+                ],
+                "scope": "roundtrip"
+              },
+              "metadata": {
+                "designer": {
+                  "x": 4500,
+                  "y": 0,
+                  "name": "Day slots"
+                }
+              },
+              "filter": {
+                "name": "Working day, not excluded by the 15-minute rule",
+                "conditions": [
+                  [
+                    {
+                      "a": "{{17.weekday}}",
+                      "o": "number:lessorequal",
+                      "b": "5"
+                    },
+                    {
+                      "a": "{{15.far_dates}}",
+                      "o": "text:notcontain",
+                      "b": "{{17.date}}"
+                    }
+                  ]
+                ]
+              }
+            },
+            {
+              "id": 19,
+              "module": "util:TextAggregator",
+              "version": 1,
+              "parameters": {
+                "rowSeparator": "",
+                "feeder": 16
+              },
+              "mapper": {
+                "value": "{{if(18.s08 = \"yes\"; 18.frag08; \"\")}}{{if(18.s10 = \"yes\"; 18.frag10; \"\")}}{{if(18.s12 = \"yes\"; 18.frag12; \"\")}}{{if(18.s14 = \"yes\"; 18.frag14; \"\")}}"
+              },
+              "metadata": {
+                "designer": {
+                  "x": 4800,
+                  "y": 0,
+                  "name": "Open slots -> JSON"
+                }
+              }
+            },
+            {
+              "id": 20,
+              "module": "gateway:WebhookRespond",
+              "version": 1,
+              "parameters": {},
+              "mapper": {
+                "status": "200",
+                "body": "{\"status\":\"{{if(length(19.text) > 0; \"ok\"; \"no_availability\")}}\",\"trade\":\"{{2.trade}}\",\"technician\":\"{{2.tech}}\",\"timezone\":\"America/New_York\",\"today\":\"{{2.today}}\",\"today_spoken\":\"{{2.today_spoken}}\",\"resolved_address\":\"{{4.resolved_address}}\",\"window\":{\"from\":\"{{2.today}}\",\"to\":\"{{8.window_to}}\"},\"slot_count\":{{length(19.text) - length(replace(19.text; \"/\\{/g\"; \"\"))}},\"slots\":[{{substring(19.text; 1; length(19.text))}}],\"message\":\"{{if(length(19.text) > 0; length(19.text) - length(replace(19.text; \"/\\{/g\"; \"\")); \"\")}}{{if(length(19.text) > 0; \" open two-hour windows in the next 14 days. Offer the earliest two or three first, more only if the caller asks.\"; \"No open windows in the next 14 days for this technician. Apologise and say a team member will call back to schedule.\")}}\",\"agent_instructions\":\"Only offer windows from the slots list, using each slot's spoken text. Never invent a time. Ignore the debug field.\",\"debug\":{\"event_count\":{{15.event_count}},\"busy\":\"{{15.busy}}\",\"far_dates\":\"{{15.far_dates}}\",\"now_ts\":{{2.now_ts}},\"earliest_ts\":{{8.earliest_ts}},\"events\":[{{15.debug_events}}]}}",
+                "headers": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ]
+              },
+              "metadata": {
+                "designer": {
+                  "x": 5100,
+                  "y": 0,
+                  "name": "Respond: ok / no_availability"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "slots": null,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": {
+      "orphans": []
+    },
+    "zone": "eu1.make.com",
+    "notes": []
+  }
+}
