@@ -1,0 +1,25 @@
+{
+  "type": "custom",
+  "name": "check_availability",
+  "description": "Returns the open 2-hour appointment windows for the technician who handles the caller's trade, within the next 14 days. Call exactly once, only after the trade is identified and the caller has confirmed the full service address. The response contains a status field and a slots list; offer only times from that list.",
+  "url": "MAKE_WEBHOOK_URL",
+  "speak_during_execution": true,
+  "speak_after_execution": true,
+  "execution_message_description": "Tell the caller you are checking the schedule, in one short sentence.",
+  "timeout_ms": 45000,
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "trade": {
+        "type": "string",
+        "enum": ["Plumbing", "Electrical", "HVAC"],
+        "description": "The trade identified from the caller's description of the problem."
+      },
+      "address": {
+        "type": "string",
+        "description": "The full service address the caller confirmed, as one line: street number, street name, unit or apartment if any, city, ZIP code."
+      }
+    },
+    "required": ["trade", "address"]
+  }
+}
