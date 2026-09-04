@@ -165,7 +165,7 @@ keep "speak during execution" on.
 ## Testing
 
 ```
-python -m pytest -q                                   # 951 passed
+python -m pytest -q                                   # 962 passed
 python reference/check_webhook.py --matrix            # live: 3 trades x near/mid/far/bad address
 python reference/check_webhook.py --stress 20 --concurrency 5
 ```
@@ -192,11 +192,38 @@ instead of surfacing on a live call.
 - `tests/test_artifacts.py`: the blueprint regenerates identically, module ids are unique, every
   IML reference resolves, every response body is valid JSON with `status` and `slots`, the
   routing, 7200-second and 900-second rules are present, every date function carries a
-  timezone, no API key or webhook URL is committed.
+  timezone, no API key or webhook URL is committed, and the committed Retell export still matches
+  `retell/prompt.md` and `retell/tool_check_availability.json`.
 - `reference/check_webhook.py`: live requests. Validates each slot, then rebuilds the events the
   scenario used from its debug block and diffs against the reference. Zero diff required.
   `--stress` fires concurrent requests and reports p50, p95 and max latency, status counts and
   any invariant violation.
+
+### What only the live system could tell us
+
+The simulator makes the logic cheap to verify, but it is a model of Make, and three classes of
+bug live outside any model. All three showed up on the real thing.
+
+- **Make does not honour compound conditions.** `if(a <= b and c > d; ...)` came out true every
+  time: a job from 14:00 to 16:00 marked all eight working hours busy, and a job 1526 seconds
+  away was reported as within range. The simulator implements `and` correctly, so it could never
+  have caught this. Every condition is now a nested `if()`, and `test_no_compound_conditions_in_iml`
+  fails the build if a bare `and` or `or` reappears in an expression.
+- **Wrong module identifier, then an API scope error.** The blueprint first named a module that
+  does not exist, then one that returns `403 insufficient authentication scopes` because Make's
+  standard Google connection is not scoped for raw Calendar calls. Neither is visible offline.
+  It now uses `google-calendar:searchEvents`, with `singleEvents` on and the default limit of 10
+  raised, which was silently truncating a 10-event calendar.
+- **The agent skipped the address read-back.** The prompt said to confirm the address, but only
+  as a summary line, and the model went straight from hearing an address to calling the tool —
+  and answered a plain "no" with "thanks for confirming". The rule is now explicit that the
+  read-back is a turn of its own and that anything short of a clear yes is a no.
+
+That last fix earned itself back on the first voice call: speech recognition heard "Guadalupe"
+as "Gwaladel", the agent read it back, the caller spelled it out, and it re-confirmed before
+geocoding. Two recorded calls cover both trades and both technicians (27 windows on tech1, 24 on
+tech2), an address corrected by number and another by spelling, a failed geocode with recovery,
+and a request for a date the rules exclude, which the agent refused rather than inventing a slot.
 
 ## Blind spots and production notes
 
