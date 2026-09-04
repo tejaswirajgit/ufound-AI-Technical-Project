@@ -84,8 +84,12 @@ def test_tool_definition():
 
 def test_prompt_covers_the_scored_rules():
     text = PROMPT.read_text(encoding="utf-8").lower()
+    # The read-back rule needs the explicit "not in the same turn" wording: with only the summary
+    # line at the top, a live chat test on 2026-09-04 went straight from hearing the address to
+    # calling the tool, and answered a plain "no" with "thanks for confirming".
     for phrase in ["check_availability", "read the full address back", "never invent", "do not book",
-                   "do not guess", "never say those three names", "no_availability", "address_not_found"]:
+                   "do not guess", "never say those three names", "no_availability", "address_not_found",
+                   "never call check_availability in the same turn", "anything other than a clear yes"]:
         assert phrase in text, phrase
 
 
