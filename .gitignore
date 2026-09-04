@@ -1,0 +1,31 @@
+# Claude Code: local config, skills, agents, repo instructions
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+
+# Planning docs and assignment material (local only, not deliverables)
+docs/
+Resourse/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Secrets and local environment
+.env
+.env.*
+*.local.json
+
+# Raw exports that still contain the Maps key or webhook URL.
+# Commit only the stripped versions (see reference/strip_secrets.py).
+make/*.raw.json
+retell/*.raw.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
