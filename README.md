@@ -32,7 +32,7 @@ Sources: the brief (sections 2, 4, 5, 6) and Eyal's clarifications of 3 Septembe
 
 | # | Rule | Source |
 |---|---|---|
-| 1 | Company timezone is America/New_York. "Central" in the brief was a typo | Eyal |
+| 1 | Company timezone is America/New_York. "Central" in the brief was a typo | Eyal, and the `ufound Dispatch` calendar is itself set to Eastern Time |
 | 2 | Working days and hours: Monday to Friday, 08:00 to 16:00 | Eyal, brief s6 |
 | 3 | Slots are fixed: 8-10, 10-12, 12-14, 14-16 | Brief s4 |
 | 4 | A slot is open when at least one of its two hours is free. It is closed only when both hours overlap a job | Eyal, brief s4 |
