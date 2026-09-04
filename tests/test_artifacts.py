@@ -101,12 +101,15 @@ def test_every_response_body_is_json_with_status_and_slots(mods):
 def test_rules_are_encoded(bp, mods):
     text = "\n".join(strings(bp))  # raw mapper strings, not JSON-escaped
     for needle in ['"plumbing"; "tech1@ufound-ai.com"', '"electrical"; "tech2@ufound-ai.com"', '"hvac"; "tech3@ufound-ai.com"',
-                   "2.now_ts + 7200", "duration.value <= 900", "singleEvents"]:
+                   "2.now_ts + 7200", "<= 900", 'condition = "ROUTE_EXISTS"', "singleEvents",
+                   "routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", "maps.googleapis.com/maps/api/geocode/json"]:
         assert needle in text, needle
     by_id = {m["id"]: m for m in mods}
     assert by_id[16]["mapper"] == {"start": "0", "repeats": "14", "step": "1"}
-    assert by_id[18]["filter"]["conditions"][0][0] == {"a": "{{17.weekday}}", "o": "number:lessorequal", "b": "5"}
-    assert by_id[18]["filter"]["conditions"][0][1]["o"] == "text:notcontain"
+    assert by_id[18]["filter"]["conditions"][0] == [{"a": "{{17.weekday}}", "o": "number:less", "b": "6"},
+                                                     {"a": "{{17.far_day}}", "o": "text:equal", "b": "no"}]
+    assert json.loads(IML_BLOCK.sub("0", by_id[12]["mapper"]["data"]))["travelMode"] == "DRIVE"
+    assert by_id[12]["parameters"]["handleErrors"] is True and by_id[3]["parameters"]["handleErrors"] is True
     assert by_id[11]["filter"]["conditions"][0][1] == {"a": "{{10.status}}", "o": "text:notequal", "b": "cancelled"}
     for m in mods:
         if m["module"] == "http:ActionSendData" or m["module"].startswith("google-calendar"):

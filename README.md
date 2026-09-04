@@ -1,7 +1,7 @@
 # Ufound Mechanical: inbound booking voice agent
 
 Job classification and `check_availability` for the ufound AI technical project.
-Stack: Retell AI (voice agent) + Make.com (webhook scenario) + Google Calendar (`ufound Dispatch`) + Google Maps Distance Matrix.
+Stack: Retell AI (voice agent) + Make.com (webhook scenario) + Google Calendar (`ufound Dispatch`) + Google Maps (Geocoding API and Routes API).
 
 The agent asks what is wrong, works out the trade (Plumbing, Electrical or HVAC) without ever
 reading the trade list aloud, collects and confirms the service address, calls
@@ -81,7 +81,7 @@ Module by module (ids as in the blueprint):
 |---|---|---|
 | 1 | Custom webhook | Receives `{name, args: {trade, address}, call}` from Retell (the checker adds `debug: "yes"`) |
 | 2 | Config & routing | `tech` by `switch(lower(trim(trade)))`, no fallback. `today`, `now_ts`, `window_noon` in Eastern time. Calendar id and Maps key live here |
-| 3 | Maps: validate caller address | Distance Matrix from the caller to the company. Error handler answers `status: error` |
+| 3 | Maps: geocode caller address | Geocoding API. `ZERO_RESULTS` means the address could not be located; the formatted address and coordinates are kept for the drive-time calls. Error handler answers `status: error` |
 | 4 | Address check | `address_ok`, `resolved_address`, `fail_status` |
 | 5 | Router | Route 1 unknown trade, route 2 bad address or Maps error, route 3 main flow |
 | 6 | Respond unknown_trade | Filter `tech = ""` |
@@ -90,7 +90,7 @@ Module by module (ids as in the blueprint):
 | 9 | Calendar: events in window | `GET /calendar/v3/calendars/{id}/events`, `singleEvents`, ordered by start, up to 250. Error handler |
 | 10 | Each event | Iterator over `items` |
 | 11 | Event times (Eastern) | Filter: attendees contain the technician email, status not cancelled. Computes `date`, `start_h`, exclusive `end_h_eff` (rounded up; 24 if the job ends another day or is all-day), `location`, and the keys `k08`..`k15` = `YYYY-MM-DD HH\|` |
-| 12 | Maps: drive time caller -> job | Destination is the job location (company address when a job has none, so the bundle keeps flowing). Error handler |
+| 12 | Maps: drive time caller -> job | Routes API `computeRouteMatrix`: origin = caller coordinates, destination = job location (company address when a job has none, so the bundle keeps flowing). Traffic-unaware, so results are deterministic. Error handler |
 | 13 | Event row | `hour_keys` for every hour the job touches, `drive_seconds`, `far` (over 900 s or unmeasurable), `debug_json` |
 | 14 | All events -> array | Array aggregator |
 | 15 | Busy map | `busy` = all hour keys joined; `far_dates` = dates of far jobs |
@@ -132,9 +132,10 @@ recompute the slots independently.
 
 ## Setup
 
-Google Cloud: a project with billing, the Distance Matrix API enabled, and an API key restricted
-to it. If a new project cannot enable the legacy Distance Matrix API, the Routes API
-`computeRouteMatrix` endpoint is the drop-in replacement (POST, `X-Goog-Api-Key`, duration as `"930s"`).
+Google Cloud: a project with billing enabled, the Geocoding API and the Routes API enabled, and
+an API key restricted to those two. The legacy Distance Matrix API cannot be enabled on projects
+created after March 2025, which is why the scenario uses `computeRouteMatrix`; both APIs have a
+free monthly tier that covers this project many times over.
 
 Make: Scenarios > Create > Import Blueprint > `make/check_availability.blueprint.json`. Then
 open module 1 and create the webhook (copy its URL), open module 9 and pick the Google account
@@ -173,7 +174,7 @@ python reference/check_webhook.py --stress 20 --concurrency 5
 ## Blind spots and production notes
 
 - Drive time is measured from the caller to each existing job, not between consecutive jobs,
-  and without traffic. A job at 8 AM and the caller at 4 PM are treated the same.
+  and without traffic (Routes API `TRAFFIC_UNAWARE`). A job at 8 AM and the caller at 4 PM are treated the same.
 - A multi-day all-day event (a week of vacation) blocks only its first day, because
   `singleEvents` does not split it. A production build would expand `start.date` to `end.date`.
 - More than 250 events in the 14-day window would need pagination.
