@@ -22,10 +22,8 @@ Flow (module ids are stable and referenced in README and the video):
 Google Maps: the Distance Matrix API is legacy and cannot be enabled on new projects, so
 address validation uses the Geocoding API and drive times use Routes API computeRouteMatrix.
 
-Unverified from public sources: the Google Calendar "Make an API call" module id (Make's own
-templates use google-calendar:createAnEvent v5, so makeAnAPICall v5 follows the pattern). If the
-import rejects module 9, add Google Calendar > Make an API call in the UI with the same URL and
-query string, then re-export.
+Every module identifier here has been round-tripped through a real Make import and export
+(2026-09-04), so nothing is guessed.
 """
 from __future__ import annotations
 
@@ -283,13 +281,17 @@ def build() -> dict:
     ], 1500, 0, filt("Known trade and valid address",
                      cond("{{2.tech}}", "text:notequal", ""), cond("{{4.address_ok}}", "text:equal", "yes")))
 
+    # Identifier, version, field names and the relative URL were all read back from a real
+    # Make export on 2026-09-04. The path is relative to https://www.googleapis.com/calendar,
+    # so it must not repeat "/calendar". __IMTCONN__ stays null: whoever imports this picks
+    # their own Google connection from the dropdown.
     calendar = {
         "id": 9,
-        "module": "google-calendar:makeAnAPICall",
+        "module": "google-calendar:makeApiCall",
         "version": 5,
-        "parameters": {},
+        "parameters": {"__IMTCONN__": None},
         "mapper": {
-            "url": "/calendar/v3/calendars/{{2.calendar_id}}/events",
+            "url": "/v3/calendars/{{2.calendar_id}}/events",
             "method": "GET",
             "headers": [],
             "qs": [
@@ -301,7 +303,25 @@ def build() -> dict:
             ],
             "body": "",
         },
-        "metadata": designer(1800, 0, "Calendar: events in window"),
+        "metadata": {
+            **designer(1800, 0, "Calendar: events in window"),
+            "restore": {"parameters": {"__IMTCONN__": {"label": "Pick your Google connection",
+                                                       "data": {"scoped": "true", "connection": "google"}}},
+                        "expect": {"method": {"mode": "chose", "label": "GET"}}},
+            "parameters": [{"name": "__IMTCONN__", "type": "account:google", "label": "Connection", "required": True}],
+            "expect": [
+                {"name": "url", "type": "text", "label": "URL", "required": True},
+                {"name": "method", "type": "select", "label": "Method", "required": True,
+                 "validate": {"enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]}},
+                {"name": "headers", "type": "array", "label": "Headers",
+                 "spec": [{"name": "key", "type": "text", "label": "Key"},
+                          {"name": "value", "type": "text", "label": "Value"}]},
+                {"name": "qs", "type": "array", "label": "Query String",
+                 "spec": [{"name": "key", "type": "text", "label": "Key"},
+                          {"name": "value", "type": "text", "label": "Value"}]},
+                {"name": "body", "type": "any", "label": "Body"},
+            ],
+        },
         "onerror": on_error(9, 1800, 0),
     }
 
@@ -457,7 +477,7 @@ def build() -> dict:
                 "freshVariables": False,
             },
             "designer": {"orphans": []},
-            "zone": "eu1.make.com",
+            "zone": "us2.make.com",
             "notes": [],
         },
     }

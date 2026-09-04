@@ -415,11 +415,13 @@
             },
             {
               "id": 9,
-              "module": "google-calendar:makeAnAPICall",
+              "module": "google-calendar:makeApiCall",
               "version": 5,
-              "parameters": {},
+              "parameters": {
+                "__IMTCONN__": null
+              },
               "mapper": {
-                "url": "/calendar/v3/calendars/{{2.calendar_id}}/events",
+                "url": "/v3/calendars/{{2.calendar_id}}/events",
                 "method": "GET",
                 "headers": [],
                 "qs": [
@@ -451,7 +453,94 @@
                   "x": 1800,
                   "y": 0,
                   "name": "Calendar: events in window"
-                }
+                },
+                "restore": {
+                  "parameters": {
+                    "__IMTCONN__": {
+                      "label": "Pick your Google connection",
+                      "data": {
+                        "scoped": "true",
+                        "connection": "google"
+                      }
+                    }
+                  },
+                  "expect": {
+                    "method": {
+                      "mode": "chose",
+                      "label": "GET"
+                    }
+                  }
+                },
+                "parameters": [
+                  {
+                    "name": "__IMTCONN__",
+                    "type": "account:google",
+                    "label": "Connection",
+                    "required": true
+                  }
+                ],
+                "expect": [
+                  {
+                    "name": "url",
+                    "type": "text",
+                    "label": "URL",
+                    "required": true
+                  },
+                  {
+                    "name": "method",
+                    "type": "select",
+                    "label": "Method",
+                    "required": true,
+                    "validate": {
+                      "enum": [
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "PATCH",
+                        "DELETE"
+                      ]
+                    }
+                  },
+                  {
+                    "name": "headers",
+                    "type": "array",
+                    "label": "Headers",
+                    "spec": [
+                      {
+                        "name": "key",
+                        "type": "text",
+                        "label": "Key"
+                      },
+                      {
+                        "name": "value",
+                        "type": "text",
+                        "label": "Value"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "qs",
+                    "type": "array",
+                    "label": "Query String",
+                    "spec": [
+                      {
+                        "name": "key",
+                        "type": "text",
+                        "label": "Key"
+                      },
+                      {
+                        "name": "value",
+                        "type": "text",
+                        "label": "Value"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "body",
+                    "type": "any",
+                    "label": "Body"
+                  }
+                ]
               },
               "onerror": [
                 {
@@ -1115,7 +1204,7 @@
     "designer": {
       "orphans": []
     },
-    "zone": "eu1.make.com",
+    "zone": "us2.make.com",
     "notes": []
   }
 }

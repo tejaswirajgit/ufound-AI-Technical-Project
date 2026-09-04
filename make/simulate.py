@@ -563,7 +563,7 @@ def _run_module(module: dict, ctx: Context, http) -> None:
     kind, mid = module["module"], module["id"]
     if kind == "util:SetVariables":
         ctx.outputs[mid] = {v["name"]: ctx.evaluate(v["value"]) for v in module["mapper"]["variables"]}
-    elif kind in ("http:ActionSendData", "google-calendar:makeAnAPICall"):
+    elif kind == "http:ActionSendData" or kind.startswith("google-calendar:"):
         mapper = {k: ctx.evaluate(v) if isinstance(v, str) else v for k, v in module["mapper"].items()}
         mapper["qs"] = {i.get("name") or i.get("key"): ctx.evaluate(i["value"]) for i in module["mapper"].get("qs", [])}
         mapper["headers"] = {i.get("name") or i.get("key"): ctx.evaluate(i["value"]) for i in module["mapper"].get("headers", [])}
