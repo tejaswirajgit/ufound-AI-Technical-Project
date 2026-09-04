@@ -90,13 +90,12 @@ Module by module (ids as in the blueprint):
 | 6 | Respond unknown_trade | Filter `tech = ""` |
 | 7 | Respond address_not_found / error | Filter `address_ok = no` |
 | 8 | Time window | `time_min` and `time_max` (midnight Eastern today and +14 days, sent as UTC), `window_to`, `earliest_ts = now + 7200` |
-| 9 | Calendar: events in window | `GET /calendar/v3/calendars/{id}/events`, `singleEvents`, ordered by start, up to 250. Error handler |
-| 10 | Each event | Iterator over `items` |
-| 11 | Event times (Eastern) | Filter: attendees contain the technician email, status not cancelled. Computes `date`, `start_h`, exclusive `end_h_eff` (rounded up; 24 if the job ends another day or is all-day), `location`, and the keys `k08`..`k15` = `YYYY-MM-DD HH\|` |
+| 9 | Calendar: events in window | Google Calendar **Search events**, one bundle per event. Recurring jobs expanded, ordered by start, limit 250. Error handler |
+| 11 | Event times (Eastern) | Filter: attendees contain the technician email, status not cancelled. Computes `date`, `end_date`, `start_h`, the exclusive end hour rounded up, and keys `k08`..`k15` and `j08`..`j15` = `YYYY-MM-DD HH\|` for the first and last day |
 | 12 | Maps: drive time caller -> job | Routes API `computeRouteMatrix`: origin = caller coordinates, destination = job location (company address when a job has none, so the bundle keeps flowing). Traffic-unaware, so results are deterministic. Error handler |
 | 13 | Event row | `hour_keys` for every hour the job touches, `drive_seconds`, `far` (over 900 s or unmeasurable), `debug_json` |
-| 14 | All events -> array | Array aggregator |
-| 15 | Busy map | `busy` = all hour keys joined; `far_dates` = dates of far jobs |
+| 14 | All events -> array | Array aggregator, sourced from module 9 |
+| 15 | Busy map | `busy` = all hour keys joined; `far_dates` = dates of far jobs, including a second day when the job runs past midnight |
 | 16 | Each of 14 days | Repeater, i = 0..13 |
 | 17 | Day (Eastern) | `date` from a noon anchor (DST-safe), ISO `weekday`, `spoken_day`, slot start timestamps, keys `k08`..`k15` |
 | 18 | Day slots | Filter: weekday <= 5 and date not in `far_dates`. A slot is closed only when both of its hour keys are in `busy`; today also needs `ts >= earliest_ts`. Emits one JSON fragment per open slot |
@@ -105,7 +104,10 @@ Module by module (ids as in the blueprint):
 
 Why native modules only: the free plan has no Code module, and the logic stays visible in the
 scenario for the walkthrough. Why fixed-width hour keys: `contains()` on `2026-09-09 08|` is an
-exact lookup, so "both hours busy" is two substring checks.
+exact lookup, so "both hours busy" is two substring checks. Why Search events rather than a raw
+Calendar API call: Make's standard Google connection is not scoped for arbitrary Calendar API
+requests and returns `403 insufficient authentication scopes`; widening it means registering
+your own OAuth client. The native module works with the standard connection and reads better.
 
 ## Response
 
@@ -200,9 +202,10 @@ instead of surfacing on a live call.
 
 - Drive time is measured from the caller to each existing job, not between consecutive jobs,
   and without traffic (Routes API `TRAFFIC_UNAWARE`). A job at 8 AM and the caller at 4 PM are treated the same.
-- A multi-day all-day event (a week of vacation) blocks only its first day, because
-  `singleEvents` does not split it. A production build would expand `start.date` to `end.date`.
-  A timed job that runs past midnight is handled correctly on both of its days.
+- A multi-day all-day event (a week of vacation) blocks only its first day. A timed job that
+  runs past midnight is handled correctly on both of its days.
+- Make's Search events module defaults to a limit of 10 and truncates silently. It is set to 250
+  here, but a technician with more than 250 jobs in the window would still be cut off.
 - `make/simulate.py` models Make's semantics from its documentation, not from Make itself. It
   catches logic and expression errors; it cannot catch a module id or connection that Make
   rejects at import. That is what the live webhook run is for.

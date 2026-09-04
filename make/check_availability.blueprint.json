@@ -415,38 +415,18 @@
             },
             {
               "id": 9,
-              "module": "google-calendar:makeApiCall",
+              "module": "google-calendar:searchEvents",
               "version": 5,
               "parameters": {
                 "__IMTCONN__": null
               },
               "mapper": {
-                "url": "/v3/calendars/{{2.calendar_id}}/events",
-                "method": "GET",
-                "headers": [],
-                "qs": [
-                  {
-                    "key": "timeMin",
-                    "value": "{{8.time_min}}"
-                  },
-                  {
-                    "key": "timeMax",
-                    "value": "{{8.time_max}}"
-                  },
-                  {
-                    "key": "singleEvents",
-                    "value": "true"
-                  },
-                  {
-                    "key": "orderBy",
-                    "value": "startTime"
-                  },
-                  {
-                    "key": "maxResults",
-                    "value": "250"
-                  }
-                ],
-                "body": ""
+                "calendar": "{{2.calendar_id}}",
+                "timeMin": "{{8.time_min}}",
+                "timeMax": "{{8.time_max}}",
+                "singleEvents": true,
+                "orderBy": "startTime",
+                "limit": "250"
               },
               "metadata": {
                 "designer": {
@@ -465,9 +445,12 @@
                     }
                   },
                   "expect": {
-                    "method": {
+                    "calendar": {
+                      "mode": "edit"
+                    },
+                    "orderBy": {
                       "mode": "chose",
-                      "label": "GET"
+                      "label": "Start time"
                     }
                   }
                 },
@@ -481,64 +464,44 @@
                 ],
                 "expect": [
                   {
-                    "name": "url",
-                    "type": "text",
-                    "label": "URL",
+                    "name": "calendar",
+                    "type": "select",
+                    "label": "Calendar ID",
                     "required": true
                   },
                   {
-                    "name": "method",
+                    "name": "timeMin",
+                    "type": "date",
+                    "label": "Start Date",
+                    "time": true
+                  },
+                  {
+                    "name": "timeMax",
+                    "type": "date",
+                    "label": "End Date",
+                    "time": true
+                  },
+                  {
+                    "name": "singleEvents",
+                    "type": "boolean",
+                    "label": "Single Events",
+                    "required": true
+                  },
+                  {
+                    "name": "orderBy",
                     "type": "select",
-                    "label": "Method",
-                    "required": true,
+                    "label": "Order By",
                     "validate": {
                       "enum": [
-                        "GET",
-                        "POST",
-                        "PUT",
-                        "PATCH",
-                        "DELETE"
+                        "startTime",
+                        "updated"
                       ]
                     }
                   },
                   {
-                    "name": "headers",
-                    "type": "array",
-                    "label": "Headers",
-                    "spec": [
-                      {
-                        "name": "key",
-                        "type": "text",
-                        "label": "Key"
-                      },
-                      {
-                        "name": "value",
-                        "type": "text",
-                        "label": "Value"
-                      }
-                    ]
-                  },
-                  {
-                    "name": "qs",
-                    "type": "array",
-                    "label": "Query String",
-                    "spec": [
-                      {
-                        "name": "key",
-                        "type": "text",
-                        "label": "Key"
-                      },
-                      {
-                        "name": "value",
-                        "type": "text",
-                        "label": "Value"
-                      }
-                    ]
-                  },
-                  {
-                    "name": "body",
-                    "type": "any",
-                    "label": "Body"
+                    "name": "limit",
+                    "type": "uinteger",
+                    "label": "Limit"
                   }
                 ]
               },
@@ -581,22 +544,6 @@
               ]
             },
             {
-              "id": 10,
-              "module": "builtin:BasicFeeder",
-              "version": 1,
-              "parameters": {},
-              "mapper": {
-                "array": "{{9.body.items}}"
-              },
-              "metadata": {
-                "designer": {
-                  "x": 2100,
-                  "y": 0,
-                  "name": "Each event"
-                }
-              }
-            },
-            {
               "id": 11,
               "module": "util:SetVariables",
               "version": 1,
@@ -604,100 +551,96 @@
               "mapper": {
                 "variables": [
                   {
-                    "name": "all_day",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; \"yes\"; \"no\")}}"
-                  },
-                  {
                     "name": "date",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}}"
+                    "value": "{{formatDate(9.start; \"YYYY-MM-DD\"; \"America/New_York\")}}"
                   },
                   {
                     "name": "end_date",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}}"
+                    "value": "{{formatDate(9.end; \"YYYY-MM-DD\"; \"America/New_York\")}}"
                   },
                   {
                     "name": "start_h",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 0; parseNumber(formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"H\"; \"America/New_York\")))}}"
+                    "value": "{{parseNumber(formatDate(9.start; \"H\"; \"America/New_York\"))}}"
                   },
                   {
                     "name": "end_h_first",
-                    "value": "{{if(if(if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\")) = if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\")); \"no\"; \"yes\") = \"yes\"; 24; if(ifempty(10.start.dateTime; \"\") = \"\"; 24; parseNumber(formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"H\"; \"America/New_York\")) + if(parseNumber(formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"m\"; \"America/New_York\")) > 0; 1; 0)))}}"
+                    "value": "{{if(if(formatDate(9.end; \"YYYY-MM-DD\"; \"America/New_York\") = formatDate(9.start; \"YYYY-MM-DD\"; \"America/New_York\"); \"no\"; \"yes\") = \"yes\"; 24; parseNumber(formatDate(9.end; \"H\"; \"America/New_York\")) + if(parseNumber(formatDate(9.end; \"m\"; \"America/New_York\")) > 0; 1; 0))}}"
                   },
                   {
                     "name": "end_h_last",
-                    "value": "{{if(if(if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\")) = if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\")); \"no\"; \"yes\") = \"yes\"; if(ifempty(10.start.dateTime; \"\") = \"\"; 24; parseNumber(formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"H\"; \"America/New_York\")) + if(parseNumber(formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"m\"; \"America/New_York\")) > 0; 1; 0)); 0)}}"
+                    "value": "{{if(if(formatDate(9.end; \"YYYY-MM-DD\"; \"America/New_York\") = formatDate(9.start; \"YYYY-MM-DD\"; \"America/New_York\"); \"no\"; \"yes\") = \"yes\"; parseNumber(formatDate(9.end; \"H\"; \"America/New_York\")) + if(parseNumber(formatDate(9.end; \"m\"; \"America/New_York\")) > 0; 1; 0); 0)}}"
                   },
                   {
                     "name": "location",
-                    "value": "{{ifempty(10.location; \"\")}}"
+                    "value": "{{ifempty(9.location; \"\")}}"
                   },
                   {
                     "name": "has_location",
-                    "value": "{{if(ifempty(10.location; \"\") = \"\"; \"no\"; \"yes\")}}"
+                    "value": "{{if(ifempty(9.location; \"\") = \"\"; \"no\"; \"yes\")}}"
                   },
                   {
                     "name": "k08",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 08|"
+                    "value": "{{formatDate(9.start; \"YYYY-MM-DD\"; \"America/New_York\")}} 08|"
                   },
                   {
                     "name": "k09",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 09|"
+                    "value": "{{formatDate(9.start; \"YYYY-MM-DD\"; \"America/New_York\")}} 09|"
                   },
                   {
                     "name": "k10",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 10|"
+                    "value": "{{formatDate(9.start; \"YYYY-MM-DD\"; \"America/New_York\")}} 10|"
                   },
                   {
                     "name": "k11",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 11|"
+                    "value": "{{formatDate(9.start; \"YYYY-MM-DD\"; \"America/New_York\")}} 11|"
                   },
                   {
                     "name": "k12",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 12|"
+                    "value": "{{formatDate(9.start; \"YYYY-MM-DD\"; \"America/New_York\")}} 12|"
                   },
                   {
                     "name": "k13",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 13|"
+                    "value": "{{formatDate(9.start; \"YYYY-MM-DD\"; \"America/New_York\")}} 13|"
                   },
                   {
                     "name": "k14",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 14|"
+                    "value": "{{formatDate(9.start; \"YYYY-MM-DD\"; \"America/New_York\")}} 14|"
                   },
                   {
                     "name": "k15",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.start.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 15|"
+                    "value": "{{formatDate(9.start; \"YYYY-MM-DD\"; \"America/New_York\")}} 15|"
                   },
                   {
                     "name": "j08",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 08|"
+                    "value": "{{formatDate(9.end; \"YYYY-MM-DD\"; \"America/New_York\")}} 08|"
                   },
                   {
                     "name": "j09",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 09|"
+                    "value": "{{formatDate(9.end; \"YYYY-MM-DD\"; \"America/New_York\")}} 09|"
                   },
                   {
                     "name": "j10",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 10|"
+                    "value": "{{formatDate(9.end; \"YYYY-MM-DD\"; \"America/New_York\")}} 10|"
                   },
                   {
                     "name": "j11",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 11|"
+                    "value": "{{formatDate(9.end; \"YYYY-MM-DD\"; \"America/New_York\")}} 11|"
                   },
                   {
                     "name": "j12",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 12|"
+                    "value": "{{formatDate(9.end; \"YYYY-MM-DD\"; \"America/New_York\")}} 12|"
                   },
                   {
                     "name": "j13",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 13|"
+                    "value": "{{formatDate(9.end; \"YYYY-MM-DD\"; \"America/New_York\")}} 13|"
                   },
                   {
                     "name": "j14",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 14|"
+                    "value": "{{formatDate(9.end; \"YYYY-MM-DD\"; \"America/New_York\")}} 14|"
                   },
                   {
                     "name": "j15",
-                    "value": "{{if(ifempty(10.start.dateTime; \"\") = \"\"; 10.start.date; formatDate(parseDate(10.end.dateTime; \"YYYY-MM-DDTHH:mm:ssZ\"); \"YYYY-MM-DD\"; \"America/New_York\"))}} 15|"
+                    "value": "{{formatDate(9.end; \"YYYY-MM-DD\"; \"America/New_York\")}} 15|"
                   }
                 ],
                 "scope": "roundtrip"
@@ -714,12 +657,12 @@
                 "conditions": [
                   [
                     {
-                      "a": "{{lower(join(map(10.attendees; \"email\"); \",\"))}}",
+                      "a": "{{lower(join(map(9.attendees; \"email\"); \",\"))}}",
                       "o": "text:contain",
                       "b": "{{2.tech}}"
                     },
                     {
-                      "a": "{{10.status}}",
+                      "a": "{{9.status}}",
                       "o": "text:notequal",
                       "b": "cancelled"
                     }
@@ -839,8 +782,12 @@
                     "value": "{{if(11.has_location = \"no\"; \"no\"; if(12.data[1].condition = \"ROUTE_EXISTS\" and parseNumber(replace(ifempty(12.data[1].duration; \"-1s\"); \"s\"; \"\")) <= 900; \"no\"; \"yes\"))}}"
                   },
                   {
+                    "name": "far_end_date",
+                    "value": "{{if(if(11.has_location = \"no\"; \"no\"; if(12.data[1].condition = \"ROUTE_EXISTS\" and parseNumber(replace(ifempty(12.data[1].duration; \"-1s\"); \"s\"; \"\")) <= 900; \"no\"; \"yes\")) = \"yes\" and 11.end_h_last > 0; 11.end_date; \"\")}}"
+                  },
+                  {
                     "name": "debug_json",
-                    "value": "{\"date\":\"{{11.date}}\",\"end_date\":\"{{11.end_date}}\",\"start_h\":{{11.start_h}},\"end_h\":{{11.end_h_first}},\"end_h_last\":{{11.end_h_last}},\"all_day\":\"{{11.all_day}}\",\"has_location\":\"{{11.has_location}}\",\"drive_seconds\":{{if(11.has_location = \"yes\"; parseNumber(replace(ifempty(12.data[1].duration; \"-1s\"); \"s\"; \"\")); 0)}},\"far\":\"{{if(11.has_location = \"no\"; \"no\"; if(12.data[1].condition = \"ROUTE_EXISTS\" and parseNumber(replace(ifempty(12.data[1].duration; \"-1s\"); \"s\"; \"\")) <= 900; \"no\"; \"yes\"))}}\"}"
+                    "value": "{\"date\":\"{{11.date}}\",\"end_date\":\"{{11.end_date}}\",\"start_h\":{{11.start_h}},\"end_h\":{{11.end_h_first}},\"end_h_last\":{{11.end_h_last}},\"has_location\":\"{{11.has_location}}\",\"drive_seconds\":{{if(11.has_location = \"yes\"; parseNumber(replace(ifempty(12.data[1].duration; \"-1s\"); \"s\"; \"\")); 0)}},\"far\":\"{{if(11.has_location = \"no\"; \"no\"; if(12.data[1].condition = \"ROUTE_EXISTS\" and parseNumber(replace(ifempty(12.data[1].duration; \"-1s\"); \"s\"; \"\")) <= 900; \"no\"; \"yes\"))}}\"}"
                   }
                 ],
                 "scope": "roundtrip"
@@ -858,13 +805,14 @@
               "module": "builtin:BasicAggregator",
               "version": 1,
               "parameters": {
-                "feeder": 10
+                "feeder": 9
               },
               "mapper": {
                 "date": "{{13.date}}",
                 "end_date": "{{13.end_date}}",
                 "hour_keys": "{{13.hour_keys}}",
                 "far": "{{13.far}}",
+                "far_end_date": "{{13.far_end_date}}",
                 "drive_seconds": "{{13.drive_seconds}}",
                 "debug_json": "{{13.debug_json}}"
               },
@@ -877,7 +825,7 @@
                 "restore": {
                   "extra": {
                     "feeder": {
-                      "label": "Each event [10]"
+                      "label": "Calendar: events in window [9]"
                     }
                   }
                 },
@@ -901,6 +849,11 @@
                     "name": "far",
                     "type": "text",
                     "label": "far"
+                  },
+                  {
+                    "name": "far_end_date",
+                    "type": "text",
+                    "label": "far_end_date"
                   },
                   {
                     "name": "drive_seconds",
@@ -928,7 +881,7 @@
                   },
                   {
                     "name": "far_dates",
-                    "value": "{{join(map(14.array; \"date\"; \"far\"; \"yes\"); \"|\")}}|{{join(map(14.array; \"end_date\"; \"far\"; \"yes\"); \"|\")}}"
+                    "value": "{{join(map(14.array; \"date\"; \"far\"; \"yes\"); \"|\")}}|{{join(map(14.array; \"far_end_date\"); \"|\")}}"
                   },
                   {
                     "name": "event_count",

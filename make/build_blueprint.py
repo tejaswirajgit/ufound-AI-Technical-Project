@@ -12,7 +12,7 @@ Flow (module ids are stable and referenced in README and the video):
   1 webhook -> 2 config/routing -> 3 Maps: geocode caller address -> 4 address check -> 5 router
     route 1:  6 respond unknown_trade
     route 2:  7 respond address_not_found / error
-    route 3:  8 time window -> 9 Calendar events -> 10 iterator
+    route 3:  8 time window -> 9 Calendar: search events (one bundle per event)
               -> 11 event times (filter: this technician, not cancelled) -> 12 Maps: drive time
               -> 13 event row -> 14 array aggregator -> 15 busy map
               -> 16 repeater (14 days) -> 17 day -> 18 day slots (filter: weekday, not far)
@@ -140,18 +140,16 @@ def http(id_: int, name: str, x: int, y: int, url: str, method: str = "get",
     }
 
 
-# ---- per-event expressions (module 10 = iterator bundle = one Google Calendar event) ----
+# ---- per-event expressions (module 9 = Search events, one bundle per event) ----
 # Variables inside one Set variables module cannot reference each other, so these nest instead.
-P = 'parseDate(10.start.dateTime; "YYYY-MM-DDTHH:mm:ssZ")'
-PE = 'parseDate(10.end.dateTime; "YYYY-MM-DDTHH:mm:ssZ")'
-NO_DT = 'ifempty(10.start.dateTime; "") = ""'  # true for all-day events (start.date instead of start.dateTime)
-EVENT_DATE = f'if({NO_DT}; 10.start.date; {fmt(P, "YYYY-MM-DD")})'
-# An all-day event is treated as its first day only (a multi-day block is a documented blind spot),
-# so its end date is forced to the start date.
-END_DATE = f'if({NO_DT}; 10.start.date; {fmt(PE, "YYYY-MM-DD")})'
+# Make's Search events module hands back start and end as date values already parsed, so there
+# is no RFC3339 string to pick apart. An all-day event arrives as midnight to midnight, which
+# the multi-day branch below already treats as the whole working day; it needs no special case.
+EVENT_DATE = fmt("9.start", "YYYY-MM-DD")
+END_DATE = fmt("9.end", "YYYY-MM-DD")
 MULTI_DAY = f'if({END_DATE} = {EVENT_DATE}; "no"; "yes")'
-END_CEIL = f'if({NO_DT}; 24; parseNumber({fmt(PE, "H")}) + if(parseNumber({fmt(PE, "m")}) > 0; 1; 0))'
-START_H = f'if({NO_DT}; 0; parseNumber({fmt(P, "H")}))'
+END_CEIL = f'parseNumber({fmt("9.end", "H")}) + if(parseNumber({fmt("9.end", "m")}) > 0; 1; 0)'
+START_H = f'parseNumber({fmt("9.start", "H")})'
 # A job that runs past midnight is busy to the end of its first day and from hour 0 of its last.
 END_H_FIRST = f'if({MULTI_DAY} = "yes"; 24; {END_CEIL})'
 END_H_LAST = f'if({MULTI_DAY} = "yes"; {END_CEIL}; 0)'
@@ -281,73 +279,59 @@ def build() -> dict:
     ], 1500, 0, filt("Known trade and valid address",
                      cond("{{2.tech}}", "text:notequal", ""), cond("{{4.address_ok}}", "text:equal", "yes")))
 
-    # Identifier, version, field names and the relative URL were all read back from a real
-    # Make export on 2026-09-04. The path is relative to https://www.googleapis.com/calendar,
-    # so it must not repeat "/calendar". __IMTCONN__ stays null: whoever imports this picks
-    # their own Google connection from the dropdown.
+    # Identifier, version and parameter names read back from a real Make export on 2026-09-04.
+    # The raw "Make an API Call" module returns 403 insufficient authentication scopes: Make's
+    # standard Google connection is not scoped for arbitrary Calendar API calls, and the only
+    # way to widen it is to register your own OAuth client. The native Search events module
+    # works with the standard connection, and reads better in the scenario besides.
+    # It emits one bundle per event, so no iterator is needed.
+    # __IMTCONN__ stays null: whoever imports this picks their own Google connection.
     calendar = {
         "id": 9,
-        "module": "google-calendar:makeApiCall",
+        "module": "google-calendar:searchEvents",
         "version": 5,
         "parameters": {"__IMTCONN__": None},
         "mapper": {
-            "url": "/v3/calendars/{{2.calendar_id}}/events",
-            "method": "GET",
-            "headers": [],
-            "qs": [
-                {"key": "timeMin", "value": "{{8.time_min}}"},
-                {"key": "timeMax", "value": "{{8.time_max}}"},
-                {"key": "singleEvents", "value": "true"},
-                {"key": "orderBy", "value": "startTime"},
-                {"key": "maxResults", "value": "250"},
-            ],
-            "body": "",
+            "calendar": "{{2.calendar_id}}",
+            "timeMin": "{{8.time_min}}",
+            "timeMax": "{{8.time_max}}",
+            "singleEvents": True,   # expand recurring jobs into their occurrences
+            "orderBy": "startTime",  # only permitted when singleEvents is true
+            "limit": "250",          # the module defaults to 10, which silently truncates
         },
         "metadata": {
             **designer(1800, 0, "Calendar: events in window"),
             "restore": {"parameters": {"__IMTCONN__": {"label": "Pick your Google connection",
                                                        "data": {"scoped": "true", "connection": "google"}}},
-                        "expect": {"method": {"mode": "chose", "label": "GET"}}},
+                        "expect": {"calendar": {"mode": "edit"},
+                                   "orderBy": {"mode": "chose", "label": "Start time"}}},
             "parameters": [{"name": "__IMTCONN__", "type": "account:google", "label": "Connection", "required": True}],
             "expect": [
-                {"name": "url", "type": "text", "label": "URL", "required": True},
-                {"name": "method", "type": "select", "label": "Method", "required": True,
-                 "validate": {"enum": ["GET", "POST", "PUT", "PATCH", "DELETE"]}},
-                {"name": "headers", "type": "array", "label": "Headers",
-                 "spec": [{"name": "key", "type": "text", "label": "Key"},
-                          {"name": "value", "type": "text", "label": "Value"}]},
-                {"name": "qs", "type": "array", "label": "Query String",
-                 "spec": [{"name": "key", "type": "text", "label": "Key"},
-                          {"name": "value", "type": "text", "label": "Value"}]},
-                {"name": "body", "type": "any", "label": "Body"},
+                {"name": "calendar", "type": "select", "label": "Calendar ID", "required": True},
+                {"name": "timeMin", "type": "date", "label": "Start Date", "time": True},
+                {"name": "timeMax", "type": "date", "label": "End Date", "time": True},
+                {"name": "singleEvents", "type": "boolean", "label": "Single Events", "required": True},
+                {"name": "orderBy", "type": "select", "label": "Order By",
+                 "validate": {"enum": ["startTime", "updated"]}},
+                {"name": "limit", "type": "uinteger", "label": "Limit"},
             ],
         },
         "onerror": on_error(9, 1800, 0),
     }
 
-    iterator = {
-        "id": 10,
-        "module": "builtin:BasicFeeder",
-        "version": 1,
-        "parameters": {},
-        "mapper": {"array": "{{9.body.items}}"},
-        "metadata": designer(2100, 0, "Each event"),
-    }
-
     event_times = setvars(11, "Event times (Eastern)", [
-        ("all_day", iml(f'if({NO_DT}; "yes"; "no")')),
         ("date", iml(EVENT_DATE)),
         ("end_date", iml(END_DATE)),
         ("start_h", iml(START_H)),
         ("end_h_first", iml(END_H_FIRST)),
         ("end_h_last", iml(END_H_LAST)),
-        ("location", iml('ifempty(10.location; "")')),
-        ("has_location", iml('if(ifempty(10.location; "") = ""; "no"; "yes")')),
+        ("location", iml('ifempty(9.location; "")')),
+        ("has_location", iml('if(ifempty(9.location; "") = ""; "no"; "yes")')),
         *[(f"k{h:02d}", iml(EVENT_DATE) + f" {h:02d}|") for h in range(8, 16)],
         *[(f"j{h:02d}", iml(END_DATE) + f" {h:02d}|") for h in range(8, 16)],
     ], 2400, 0, filt("This technician's events, not cancelled",
-                     cond('{{lower(join(map(10.attendees; "email"); ","))}}', "text:contain", "{{2.tech}}"),
-                     cond("{{10.status}}", "text:notequal", "cancelled")))
+                     cond('{{lower(join(map(9.attendees; "email"); ","))}}', "text:contain", "{{2.tech}}"),
+                     cond("{{9.status}}", "text:notequal", "cancelled")))
 
     drive = http(12, "Maps: drive time caller -> job", 2700, 0, ROUTES_URL, method="post",
                  headers=[("X-Goog-Api-Key", "{{2.maps_key}}"),
@@ -362,21 +346,24 @@ def build() -> dict:
          + "".join(iml(f'if(11.end_h_last > {h}; 11.j{h:02d}; "")') for h in range(8, 16))),
         ("drive_seconds", iml(DRIVE)),
         ("far", iml(FAR)),
+        # A job ending at exactly midnight occupies no hour of its end date, so that date is
+        # not ruled out by the 15-minute rule. All-day jobs arrive in exactly that shape.
+        ("far_end_date", iml(f'if({FAR} = "yes" and 11.end_h_last > 0; 11.end_date; "")')),
         ("debug_json", '{"date":"{{11.date}}","end_date":"{{11.end_date}}","start_h":{{11.start_h}},'
-                       '"end_h":{{11.end_h_first}},"end_h_last":{{11.end_h_last}},"all_day":"{{11.all_day}}",'
+                       '"end_h":{{11.end_h_first}},"end_h_last":{{11.end_h_last}},'
                        '"has_location":"{{11.has_location}}","drive_seconds":' + iml(DRIVE) + ',"far":"' + iml(FAR) + '"}'),
     ], 3000, 0)
 
-    row_fields = ["date", "end_date", "hour_keys", "far", "drive_seconds", "debug_json"]
+    row_fields = ["date", "end_date", "hour_keys", "far", "far_end_date", "drive_seconds", "debug_json"]
     aggregator = {
         "id": 14,
         "module": "builtin:BasicAggregator",
         "version": 1,
-        "parameters": {"feeder": 10},
+        "parameters": {"feeder": 9},
         "mapper": {f: "{{13.%s}}" % f for f in row_fields},
         "metadata": {
             **designer(3300, 0, "All events -> array"),
-            "restore": {"extra": {"feeder": {"label": "Each event [10]"}}},
+            "restore": {"extra": {"feeder": {"label": "Calendar: events in window [9]"}}},
             "expect": [{"name": f, "type": "text", "label": f} for f in row_fields],
         },
     }
@@ -385,7 +372,7 @@ def build() -> dict:
         ("busy", iml('join(map(14.array; "hour_keys"); "")')),
         # Both ends of a far job: a job running past midnight rules out both days.
         ("far_dates", iml('join(map(14.array; "date"; "far"; "yes"); "|")') + "|"
-                      + iml('join(map(14.array; "end_date"; "far"; "yes"); "|")')),
+                      + iml('join(map(14.array; "far_end_date"); "|")')),
         ("event_count", iml("length(14.array)")),
         ("debug_events", iml('if(2.debug = "yes"; join(map(14.array; "debug_json"); ","); "")')),
     ], 3600, 0)
@@ -453,7 +440,7 @@ def build() -> dict:
         "routes": [
             {"flow": [unknown]},
             {"flow": [address_fail]},
-            {"flow": [window, calendar, iterator, event_times, drive, event_row, aggregator, busy_map,
+            {"flow": [window, calendar, event_times, drive, event_row, aggregator, busy_map,
                       repeater, day, day_slots, text_agg, final]},
         ],
     }
