@@ -48,11 +48,22 @@ def mods(bp):
 
 
 def test_no_secrets_in_deliverables():
-    files = list((ROOT / "make").glob("*.json")) + list((ROOT / "retell").glob("*.json")) + [PROMPT]
+    files = (list((ROOT / "make").glob("*.json")) + list((ROOT / "retell").glob("*.json"))
+             + [PROMPT, ROOT / "env.example"])
     for path in files:
         text = path.read_text(encoding="utf-8")
         for rx in SECRET_PATTERNS:
             assert not rx.search(text), f"secret pattern {rx.pattern} in {path.name}"
+
+
+def test_local_env_file_stays_out_of_git():
+    """env.example is the committed template; .env holds the real key and must never be tracked."""
+    ignore = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert ".env" in ignore and ".env.*" in ignore
+    assert not (ROOT / ".env.example").exists(), "the template is env.example, which .env.* would hide"
+    for line in (ROOT / "env.example").read_text(encoding="utf-8").splitlines():
+        if line.startswith("export ") and not line.lstrip("export ").startswith("#"):
+            assert "replace_me" in line, f"env.example must hold placeholders only: {line}"
 
 
 def test_tool_definition():
