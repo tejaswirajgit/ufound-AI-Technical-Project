@@ -252,7 +252,7 @@
           },
           {
             "name": "fail_status",
-            "value": "{{if(3.data.status = \"OK\" or 3.data.status = \"ZERO_RESULTS\" or 3.data.status = \"INVALID_REQUEST\"; \"address_not_found\"; \"error\")}}"
+            "value": "{{if(3.data.status = \"OK\"; \"address_not_found\"; if(3.data.status = \"ZERO_RESULTS\"; \"address_not_found\"; if(3.data.status = \"INVALID_REQUEST\"; \"address_not_found\"; \"error\")))}}"
           }
         ],
         "scope": "roundtrip"
@@ -771,7 +771,7 @@
                   },
                   {
                     "name": "hour_keys",
-                    "value": "{{if(11.start_h <= 8 and 11.end_h_first > 8; 11.k08; \"\")}}{{if(11.start_h <= 9 and 11.end_h_first > 9; 11.k09; \"\")}}{{if(11.start_h <= 10 and 11.end_h_first > 10; 11.k10; \"\")}}{{if(11.start_h <= 11 and 11.end_h_first > 11; 11.k11; \"\")}}{{if(11.start_h <= 12 and 11.end_h_first > 12; 11.k12; \"\")}}{{if(11.start_h <= 13 and 11.end_h_first > 13; 11.k13; \"\")}}{{if(11.start_h <= 14 and 11.end_h_first > 14; 11.k14; \"\")}}{{if(11.start_h <= 15 and 11.end_h_first > 15; 11.k15; \"\")}}{{if(11.end_h_last > 8; 11.j08; \"\")}}{{if(11.end_h_last > 9; 11.j09; \"\")}}{{if(11.end_h_last > 10; 11.j10; \"\")}}{{if(11.end_h_last > 11; 11.j11; \"\")}}{{if(11.end_h_last > 12; 11.j12; \"\")}}{{if(11.end_h_last > 13; 11.j13; \"\")}}{{if(11.end_h_last > 14; 11.j14; \"\")}}{{if(11.end_h_last > 15; 11.j15; \"\")}}"
+                    "value": "{{if(11.start_h <= 8; if(11.end_h_first > 8; 11.k08; \"\"); \"\")}}{{if(11.start_h <= 9; if(11.end_h_first > 9; 11.k09; \"\"); \"\")}}{{if(11.start_h <= 10; if(11.end_h_first > 10; 11.k10; \"\"); \"\")}}{{if(11.start_h <= 11; if(11.end_h_first > 11; 11.k11; \"\"); \"\")}}{{if(11.start_h <= 12; if(11.end_h_first > 12; 11.k12; \"\"); \"\")}}{{if(11.start_h <= 13; if(11.end_h_first > 13; 11.k13; \"\"); \"\")}}{{if(11.start_h <= 14; if(11.end_h_first > 14; 11.k14; \"\"); \"\")}}{{if(11.start_h <= 15; if(11.end_h_first > 15; 11.k15; \"\"); \"\")}}{{if(11.end_h_last > 8; 11.j08; \"\")}}{{if(11.end_h_last > 9; 11.j09; \"\")}}{{if(11.end_h_last > 10; 11.j10; \"\")}}{{if(11.end_h_last > 11; 11.j11; \"\")}}{{if(11.end_h_last > 12; 11.j12; \"\")}}{{if(11.end_h_last > 13; 11.j13; \"\")}}{{if(11.end_h_last > 14; 11.j14; \"\")}}{{if(11.end_h_last > 15; 11.j15; \"\")}}"
                   },
                   {
                     "name": "drive_seconds",
@@ -779,15 +779,15 @@
                   },
                   {
                     "name": "far",
-                    "value": "{{if(11.has_location = \"no\"; \"no\"; if(12.data[1].condition = \"ROUTE_EXISTS\" and parseNumber(replace(ifempty(12.data[1].duration; \"-1s\"); \"s\"; \"\")) <= 900; \"no\"; \"yes\"))}}"
+                    "value": "{{if(11.has_location = \"no\"; \"no\"; if(12.data[1].condition = \"ROUTE_EXISTS\"; if(parseNumber(replace(ifempty(12.data[1].duration; \"-1s\"); \"s\"; \"\")) <= 900; \"no\"; \"yes\"); \"yes\"))}}"
                   },
                   {
                     "name": "far_end_date",
-                    "value": "{{if(if(11.has_location = \"no\"; \"no\"; if(12.data[1].condition = \"ROUTE_EXISTS\" and parseNumber(replace(ifempty(12.data[1].duration; \"-1s\"); \"s\"; \"\")) <= 900; \"no\"; \"yes\")) = \"yes\" and 11.end_h_last > 0; 11.end_date; \"\")}}"
+                    "value": "{{if(if(11.has_location = \"no\"; \"no\"; if(12.data[1].condition = \"ROUTE_EXISTS\"; if(parseNumber(replace(ifempty(12.data[1].duration; \"-1s\"); \"s\"; \"\")) <= 900; \"no\"; \"yes\"); \"yes\")) = \"yes\"; if(11.end_h_last > 0; 11.end_date; \"\"); \"\")}}"
                   },
                   {
                     "name": "debug_json",
-                    "value": "{\"date\":\"{{11.date}}\",\"end_date\":\"{{11.end_date}}\",\"start_h\":{{11.start_h}},\"end_h\":{{11.end_h_first}},\"end_h_last\":{{11.end_h_last}},\"has_location\":\"{{11.has_location}}\",\"drive_seconds\":{{if(11.has_location = \"yes\"; parseNumber(replace(ifempty(12.data[1].duration; \"-1s\"); \"s\"; \"\")); 0)}},\"far\":\"{{if(11.has_location = \"no\"; \"no\"; if(12.data[1].condition = \"ROUTE_EXISTS\" and parseNumber(replace(ifempty(12.data[1].duration; \"-1s\"); \"s\"; \"\")) <= 900; \"no\"; \"yes\"))}}\"}"
+                    "value": "{\"date\":\"{{11.date}}\",\"end_date\":\"{{11.end_date}}\",\"start_h\":{{11.start_h}},\"end_h\":{{11.end_h_first}},\"end_h_last\":{{11.end_h_last}},\"has_location\":\"{{11.has_location}}\",\"drive_seconds\":{{if(11.has_location = \"yes\"; parseNumber(replace(ifempty(12.data[1].duration; \"-1s\"); \"s\"; \"\")); 0)}},\"far\":\"{{if(11.has_location = \"no\"; \"no\"; if(12.data[1].condition = \"ROUTE_EXISTS\"; if(parseNumber(replace(ifempty(12.data[1].duration; \"-1s\"); \"s\"; \"\")) <= 900; \"no\"; \"yes\"); \"yes\"))}}\"}"
                   }
                 ],
                 "scope": "roundtrip"
@@ -1015,19 +1015,19 @@
                 "variables": [
                   {
                     "name": "s08",
-                    "value": "{{if(contains(15.busy; 17.k08) and contains(15.busy; 17.k09); \"no\"; if(17.date = 2.today and 17.ts08 < 8.earliest_ts; \"no\"; \"yes\"))}}"
+                    "value": "{{if(contains(15.busy; 17.k08); if(contains(15.busy; 17.k09); \"no\"; if(17.date = 2.today; if(17.ts08 < 8.earliest_ts; \"no\"; \"yes\"); \"yes\")); if(17.date = 2.today; if(17.ts08 < 8.earliest_ts; \"no\"; \"yes\"); \"yes\"))}}"
                   },
                   {
                     "name": "s10",
-                    "value": "{{if(contains(15.busy; 17.k10) and contains(15.busy; 17.k11); \"no\"; if(17.date = 2.today and 17.ts10 < 8.earliest_ts; \"no\"; \"yes\"))}}"
+                    "value": "{{if(contains(15.busy; 17.k10); if(contains(15.busy; 17.k11); \"no\"; if(17.date = 2.today; if(17.ts10 < 8.earliest_ts; \"no\"; \"yes\"); \"yes\")); if(17.date = 2.today; if(17.ts10 < 8.earliest_ts; \"no\"; \"yes\"); \"yes\"))}}"
                   },
                   {
                     "name": "s12",
-                    "value": "{{if(contains(15.busy; 17.k12) and contains(15.busy; 17.k13); \"no\"; if(17.date = 2.today and 17.ts12 < 8.earliest_ts; \"no\"; \"yes\"))}}"
+                    "value": "{{if(contains(15.busy; 17.k12); if(contains(15.busy; 17.k13); \"no\"; if(17.date = 2.today; if(17.ts12 < 8.earliest_ts; \"no\"; \"yes\"); \"yes\")); if(17.date = 2.today; if(17.ts12 < 8.earliest_ts; \"no\"; \"yes\"); \"yes\"))}}"
                   },
                   {
                     "name": "s14",
-                    "value": "{{if(contains(15.busy; 17.k14) and contains(15.busy; 17.k15); \"no\"; if(17.date = 2.today and 17.ts14 < 8.earliest_ts; \"no\"; \"yes\"))}}"
+                    "value": "{{if(contains(15.busy; 17.k14); if(contains(15.busy; 17.k15); \"no\"; if(17.date = 2.today; if(17.ts14 < 8.earliest_ts; \"no\"; \"yes\"); \"yes\")); if(17.date = 2.today; if(17.ts14 < 8.earliest_ts; \"no\"; \"yes\"); \"yes\"))}}"
                   },
                   {
                     "name": "frag08",

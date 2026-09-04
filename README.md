@@ -209,6 +209,10 @@ instead of surfacing on a live call.
 - `make/simulate.py` models Make's semantics from its documentation, not from Make itself. It
   catches logic and expression errors; it cannot catch a module id or connection that Make
   rejects at import. That is what the live webhook run is for.
+  It also cannot catch a case where Make evaluates a correct-looking expression differently
+  from the documentation, which is exactly what happened with compound `and` conditions: they
+  came out true regardless of their operands. Every condition is now a nested `if()`, and a test
+  fails the build if a bare `and` or `or` reappears in an expression.
 - More than 250 events in the 14-day window would need pagination.
 - The calendar is not re-checked between this call and the human confirmation; booking is out of scope.
 - Retell retries a failed tool call; the scenario is read-only, so retries are harmless but cost operations.
